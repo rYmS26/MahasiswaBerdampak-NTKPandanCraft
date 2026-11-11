@@ -40,7 +40,7 @@ values
   (
     'tas-kantor',
     'Tas Kantor',
-    130000,
+    100000,
     '/katalog/tas_kantor.png',
     'T: 26cm | P: 39cm | L: 17cm',
     '{}',
@@ -129,10 +129,10 @@ values
   ),
   (
     'lampu-hias-berdiri',
-    'Lampu Hias Berdiri',
+    'Lampu Hias Model Tinggi',
     200000,
     '/katalog/lampu_berdiri.png',
-    'Tinggi: 105cm | Lingkaran: 30cm',
+    'Tinggi: 94cm | Lingkaran: 38cm',
     '{}',
     'Best Seller',
     'Tersedia',
@@ -140,7 +140,7 @@ values
     89,
     array['decor', 'popular', 'lamp'],
     'Lampu Hias',
-    'Lampu hias berdiri anyaman pandan yang stylish dan ramah lingkungan, cocok untuk ruang tamu atau kamar tidur. Terbuat dari bahan alami yang kuat dan tahan lama.',
+    'Lampu hias anyaman pandan dengan bentuk ramping dan elegan, cocok untuk ruang tamu maupun kamar tidur. Terbuat dari bahan alami yang kuat dan tahan lama.',
     false,
     true,
     7
@@ -148,7 +148,7 @@ values
   (
     'sandal-hotel',
     'Sandal Hotel',
-    35000,
+    25000,
     '/katalog/sandal_hotel.png',
     'T: 8cm | L: 26cm | P: 28cm',
     '{}',
@@ -186,7 +186,7 @@ values
     'Lampu Hias',
     350000,
     '/katalog/lampu_hias.png',
-    'Tinggi: 94cm | Lingkaran: 38cm',
+    'Tinggi: 105cm | Lingkaran: 30cm',
     '{}',
     'Dekorasi',
     'Tersedia',
@@ -194,7 +194,7 @@ values
     89,
     array['decor', 'lamp'],
     'Lampu Hias',
-    'Lampu hias anyaman pandan berdesain klasik yang stylish dan ramah lingkungan, cocok untuk ruang tamu atau kamar tidur. Terbuat dari bahan alami yang kuat dan tahan lama.',
+    'Menghadirkan suasana hangat dan natural untuk ruang tamu maupun kamar tidur. Terbuat dari bahan pandan alami yang kuat dan tahan lama.',
     false,
     true,
     10
@@ -220,7 +220,7 @@ values
   (
     'kotak-tisu',
     'Kotak Tisu',
-    50000,
+    35000,
     '/katalog/kotak_tisu.jpeg',
     'P: 24cm | L: 13cm | T: 8cm',
     '{}',
