@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+@theme {
+  --color-olive: #5d7332;
+  --color-olive-dark: #495b25;
+  --color-olive-light: #eef2e5;
+  --color-forest: #14261c;
+  --color-forest-muted: #425248;
+  --color-cream: #f5f2ea;
+  --color-cream-soft: #faf8f4;
+  --color-cream-border: #e6e1d5;
+  --color-whatsapp: #25d366;
+  --color-whatsapp-dark: #1fb858;
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  overscroll-behavior-y: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
