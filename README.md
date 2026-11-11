@@ -45,6 +45,6 @@ npm run dev
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
    - `SUPABASE_SECRET_KEY`
-   - `NEXT_PUBLIC_SELLER_WHATSAPP` (opsional, default `6285793773875`)
+   - `NEXT_PUBLIC_SELLER_WHATSAPP` (opsional, default `628815838516`)
    - `NEXT_PUBLIC_SITE_URL` (isi dengan domain Vercel Anda, mis. `https://ntk-pandan-craft.vercel.app`)
 4. Klik **Deploy**. Setelah live, cek endpoint `/api/health` untuk memastikan koneksi database `dbReachable: true`.

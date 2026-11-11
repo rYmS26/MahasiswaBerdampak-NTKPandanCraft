@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import {
   SELLER_WHATSAPP,
+  SELLER_WHATSAPP_DISPLAY,
   buildWhatsAppMessage,
   formatRupiah,
 } from "@/lib/format";
@@ -619,7 +620,7 @@ export function CartDrawer({
               </button>
               <p className="text-[11px] text-center text-stone-500">
                 Pesan berisi produk, foto, jumlah, &amp; harga akan otomatis terisi di
-                chat penjual (+62 857-9377-3875).
+                chat penjual ({SELLER_WHATSAPP_DISPLAY}).
               </p>
             </div>
           </div>

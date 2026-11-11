@@ -1,7 +1,19 @@
 import type { CartItem, CustomerDetails, ProductItem } from "@/types/catalog";
 
-export const SELLER_WHATSAPP =
-  process.env.NEXT_PUBLIC_SELLER_WHATSAPP?.trim() || "6285793773875";
+export const SELLER_WHATSAPP = (
+  process.env.NEXT_PUBLIC_SELLER_WHATSAPP?.trim() || "628815838516"
+).replace(/\D/g, "");
+
+export function formatWhatsAppDisplay(waNumber: string): string {
+  const digits = waNumber.replace(/\D/g, "");
+  if (digits.startsWith("62") && digits.length >= 11) {
+    const local = digits.slice(2);
+    return `+62 ${local.slice(0, 3)}-${local.slice(3, 7)}-${local.slice(7)}`;
+  }
+  return digits ? `+${digits}` : "+62 881-5838-516";
+}
+
+export const SELLER_WHATSAPP_DISPLAY = formatWhatsAppDisplay(SELLER_WHATSAPP);
 
 export const DEFAULT_SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL?.trim() ||

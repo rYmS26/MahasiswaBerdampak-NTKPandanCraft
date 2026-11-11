@@ -1,4 +1,4 @@
-import { formatRupiah } from "@/lib/format";
+import { SELLER_WHATSAPP_DISPLAY, formatRupiah } from "@/lib/format";
 import type { CartItem, CustomerDetails, ProductItem } from "@/types/catalog";
 
 function loadImageSafe(src: string): Promise<HTMLImageElement | null> {
@@ -52,7 +52,7 @@ export async function generateOrderReceiptBlob(params: {
     year: "numeric",
   });
   ctx.fillText(
-    `Kode: ${orderCode}  •  ${dateStr}  •  WA: +62 857-9377-3875`,
+    `Kode: ${orderCode}  •  ${dateStr}  •  WA: ${SELLER_WHATSAPP_DISPLAY}`,
     36,
     88,
   );

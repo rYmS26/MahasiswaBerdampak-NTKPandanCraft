@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import { Leaf, MapPin } from "lucide-react";
-import { SELLER_WHATSAPP } from "@/lib/format";
+import { SELLER_WHATSAPP, SELLER_WHATSAPP_DISPLAY } from "@/lib/format";
 
 export function Footer() {
   const [question, setQuestion] = useState("");
@@ -121,7 +121,7 @@ export function Footer() {
               </button>
             </form>
             <span className="text-xs text-stone-500">
-              WhatsApp Resmi: +62 857-9377-3875
+              WhatsApp Resmi: {SELLER_WHATSAPP_DISPLAY}
             </span>
           </div>
         </div>
