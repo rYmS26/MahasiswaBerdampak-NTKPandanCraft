@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "NTK Pandan Craft — Katalog Digital Kerajinan Pandan Ciamis",
+  title: "Ciamis Pandan Craft — Katalog Digital Kerajinan Pandan",
   description:
     "Katalog digital kerajinan anyaman daun pandan handmade dari Ciamis. Pilih produk favorit, atur jumlah di keranjang, dan pesan otomatis via WhatsApp.",
 };

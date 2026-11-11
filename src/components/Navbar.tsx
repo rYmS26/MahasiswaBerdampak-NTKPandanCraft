@@ -35,7 +35,7 @@ export function Navbar({
           <div className="relative h-9 w-9 rounded-lg overflow-hidden border border-stone-200 flex-shrink-0">
             <Image
               src="/logo.jpg"
-              alt="Logo NTK Pandan Craft"
+              alt="Logo Ciamis Pandan Craft"
               fill
               sizes="36px"
               className="object-cover"
@@ -44,10 +44,10 @@ export function Navbar({
           </div>
           <div className="min-w-0">
             <span className="block font-serif text-lg sm:text-xl font-semibold text-forest tracking-tight truncate">
-              NTK Pandan Craft
+              Ciamis Pandan Craft
             </span>
             <span className="hidden sm:block text-[11px] text-stone-500 -mt-0.5">
-              Katalog Digital • Ciamis
+              Katalog Digital • NTK Pandan Craft
             </span>
           </div>
         </a>
