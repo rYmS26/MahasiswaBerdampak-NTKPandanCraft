@@ -6,15 +6,7 @@ export async function compressImage(
   file: File,
   maxDimension = 1200,
   quality = 0.85
-): Promise<{ blob: Blob; previewUrl: string }> {
-  // If SVG or small file (< 150KB), return as is
-  if (file.type === "image/svg+xml" || file.size < 150 * 1024) {
-    return {
-      blob: file,
-      previewUrl: URL.createObjectURL(file),
-    };
-  }
-
+): Promise<{ blob: Blob; previewUrl: string; width: number; height: number }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -22,6 +14,17 @@ export async function compressImage(
       img.onload = () => {
         let width = img.width;
         let height = img.height;
+
+        // If SVG or very small, just return dimensions and file
+        if (file.type === "image/svg+xml" || file.size < 150 * 1024) {
+          resolve({
+            blob: file,
+            previewUrl: URL.createObjectURL(file),
+            width,
+            height,
+          });
+          return;
+        }
 
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
@@ -39,7 +42,7 @@ export async function compressImage(
 
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-          resolve({ blob: file, previewUrl: URL.createObjectURL(file) });
+          resolve({ blob: file, previewUrl: URL.createObjectURL(file), width, height });
           return;
         }
 
@@ -53,9 +56,9 @@ export async function compressImage(
           (blob) => {
             if (blob) {
               const previewUrl = URL.createObjectURL(blob);
-              resolve({ blob, previewUrl });
+              resolve({ blob, previewUrl, width, height });
             } else {
-              resolve({ blob: file, previewUrl: URL.createObjectURL(file) });
+              resolve({ blob: file, previewUrl: URL.createObjectURL(file), width, height });
             }
           },
           "image/webp",

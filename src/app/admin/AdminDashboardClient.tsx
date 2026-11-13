@@ -118,6 +118,7 @@ export function AdminDashboardClient() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string>("");
   const [uploadSizeInfo, setUploadSizeInfo] = useState<string>("");
+  const [previewDimensions, setPreviewDimensions] = useState<{ width: number; height: number } | null>(null);
 
   // Orders state
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -321,8 +322,9 @@ export function AdminDashboardClient() {
       sort_order: (products.length + 1),
     });
     setImageInputMode("upload");
-    setUploadPreviewUrl("");
+    setUploadPreviewUrl("/katalog/keranjang_bunga.png");
     setUploadSizeInfo("");
+    setPreviewDimensions({ width: 1254, height: 1254 });
     setProductFormError("");
     setIsProductModalOpen(true);
   }
@@ -334,6 +336,7 @@ export function AdminDashboardClient() {
     setImageInputMode(isPreset ? "preset" : "upload");
     setUploadPreviewUrl(p.imagePath);
     setUploadSizeInfo("");
+    setPreviewDimensions(null); // will automatically compute on load
     setProductFormData({
       name: p.name,
       slug: p.slug,
@@ -365,11 +368,12 @@ export function AdminDashboardClient() {
       setProductFormError("");
 
       // 1. Client-side compression for optimal speed
-      const { blob, previewUrl } = await compressImage(file, 1200, 0.85);
+      const { blob, previewUrl, width, height } = await compressImage(file, 1200, 0.85);
       setUploadPreviewUrl(previewUrl);
+      setPreviewDimensions({ width, height });
       const originalMb = (file.size / (1024 * 1024)).toFixed(2);
       const compressedKb = Math.round(blob.size / 1024);
-      setUploadSizeInfo(`Ukuran asli: ${originalMb} MB ➔ Terkompresi: ${compressedKb} KB (Hemat Kuota)`);
+      setUploadSizeInfo(`Resolusi: ${width} × ${height} px • Ukuran asli: ${originalMb} MB ➔ Terkompresi: ${compressedKb} KB (WebP)`);
 
       // 2. Upload to Supabase Storage via API
       const result = await uploadProductImage(file);
@@ -402,11 +406,12 @@ export function AdminDashboardClient() {
       setProductFormError("");
 
       // 1. Client-side compression for optimal speed
-      const { blob, previewUrl } = await compressImage(file, 1200, 0.85);
+      const { blob, previewUrl, width, height } = await compressImage(file, 1200, 0.85);
       setUploadPreviewUrl(previewUrl);
+      setPreviewDimensions({ width, height });
       const originalMb = (file.size / (1024 * 1024)).toFixed(2);
       const compressedKb = Math.round(blob.size / 1024);
-      setUploadSizeInfo(`Ukuran asli: ${originalMb} MB ➔ Terkompresi: ${compressedKb} KB (Hemat Kuota)`);
+      setUploadSizeInfo(`Resolusi: ${width} × ${height} px • Ukuran asli: ${originalMb} MB ➔ Terkompresi: ${compressedKb} KB (WebP)`);
 
       // 2. Upload to Supabase Storage via API
       const result = await uploadProductImage(file);
@@ -1889,16 +1894,40 @@ export function AdminDashboardClient() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Ukuran / Dimensi
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
+                      Ukuran / Dimensi Produk (Fisik) *
+                    </label>
+                    <span className="text-[10px] text-stone-400">Panjang × Lebar × Tinggi</span>
+                  </div>
                   <input
                     type="text"
                     value={productFormData.dimensions}
                     onChange={(e) => setProductFormData((prev) => ({ ...prev, dimensions: e.target.value }))}
-                    placeholder="Contoh: T: 25cm | P: 30cm | L: 15cm"
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest"
+                    placeholder="Contoh: 26 × 39 × 17 cm atau Tinggi 20 cm | Lingkaran 90 cm"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest bg-white font-medium"
                   />
+                  {/* Quick format helper pills */}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    <span className="text-[10px] text-stone-400 font-semibold uppercase">Pilihan Cepat:</span>
+                    {[
+                      "26 × 39 × 17 cm",
+                      "32 × 47 × 18 cm",
+                      "23 × 26 × 10 cm",
+                      "24 × 13 × 8 cm",
+                      "Tinggi 20 cm | Lingkaran 90 cm",
+                      "Tinggi 105 cm | Lingkaran 30 cm",
+                    ].map((dim) => (
+                      <button
+                        key={dim}
+                        type="button"
+                        onClick={() => setProductFormData((prev) => ({ ...prev, dimensions: dim }))}
+                        className="text-[10px] px-2 py-0.5 rounded-md bg-stone-100 hover:bg-stone-200 text-stone-600 border border-stone-200 transition-colors"
+                      >
+                        {dim}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -2107,16 +2136,24 @@ export function AdminDashboardClient() {
                         </div>
                       ) : (
                         <div className="flex flex-col items-center justify-center py-2">
-                          <div className="w-10 h-10 rounded-full bg-emerald-50 text-forest flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                          <div className="w-10 h-10 rounded-full bg-emerald-50 text-forest flex items-center justify-center mb-1.5 group-hover:scale-110 transition-transform">
                             <UploadCloud className="w-5 h-5" />
                           </div>
-                          <p className="text-xs font-bold text-stone-700 mb-0.5">
+                          <p className="text-xs font-bold text-stone-800 mb-0.5">
                             Pilih File Foto atau Tarik (Drag & Drop) ke Sini
                           </p>
+
+                          {/* Rekomendasi Dimensi Gambar (Berapa kali Berapa) */}
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200/80 text-[11px] font-semibold my-1.5 shadow-2xs">
+                            <span>📐 Rekomendasi Ukuran:</span>
+                            <span className="font-bold underline decoration-emerald-500">800 × 800 px</span>
+                            <span className="text-stone-500 font-normal">(Rasio 1:1 Persegi) atau 1200 × 1200 px</span>
+                          </div>
+
                           <p className="text-[11px] text-stone-500 mb-2">
-                            Mendukung JPG, PNG, WebP (Kamera HP/Foto Asli)
+                            Mendukung JPG, PNG, WebP • Maks. 5 MB (Otomatis dikompres &amp; hemat kuota)
                           </p>
-                          <span className="inline-block text-[11px] bg-forest text-white font-medium px-3 py-1 rounded-lg shadow-xs group-hover:bg-forest/90">
+                          <span className="inline-block text-[11px] bg-forest text-white font-semibold px-3.5 py-1.5 rounded-xl shadow-xs group-hover:bg-forest/90 transition-colors">
                             Buka File Komputer / HP
                           </span>
                         </div>
@@ -2135,9 +2172,12 @@ export function AdminDashboardClient() {
                 {/* TAB 2: Katalog Brosur Presets */}
                 {imageInputMode === "preset" && (
                   <div>
-                    <p className="text-[11px] text-stone-500 mb-2">
-                      Pilih salah satu foto produk kerajinan yang sudah ada di katalog brosur:
-                    </p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[11px] text-stone-500">
+                        Pilih salah satu foto produk kerajinan yang sudah ada di katalog brosur:
+                      </p>
+                      <span className="text-[10px] text-stone-400 font-mono">1254 × 1254 px (1:1)</span>
+                    </div>
                     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 max-h-44 overflow-y-auto p-2 border border-stone-200 rounded-xl bg-white">
                       {PRESET_IMAGES.map((img) => {
                         const isSelected =
@@ -2154,6 +2194,7 @@ export function AdminDashboardClient() {
                               }));
                               setUploadPreviewUrl(img.path);
                               setUploadSizeInfo("");
+                              setPreviewDimensions({ width: 1254, height: 1254 });
                             }}
                             className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border text-center transition-all ${
                               isSelected
@@ -2205,12 +2246,21 @@ export function AdminDashboardClient() {
                   const isPreset = PRESET_IMAGES.some((img) => img.path === currentImage);
 
                   return (
-                    <div className="flex items-center gap-3 p-2.5 bg-white border border-stone-200 rounded-xl shadow-xs">
-                      <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-stone-200 bg-stone-100 shrink-0">
+                    <div className="flex items-center gap-3 p-3 bg-white border border-stone-200 rounded-xl shadow-xs">
+                      <div className="relative w-16 h-16 rounded-xl overflow-hidden border border-stone-200 bg-stone-100 shrink-0">
                         <img
                           src={currentImage}
                           alt="Preview Produk"
                           className="w-full h-full object-cover"
+                          onLoad={(e) => {
+                            const el = e.currentTarget;
+                            if (el.naturalWidth && el.naturalHeight) {
+                              setPreviewDimensions({
+                                width: el.naturalWidth,
+                                height: el.naturalHeight,
+                              });
+                            }
+                          }}
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = "/katalog/keranjang_bunga.png";
                           }}
@@ -2237,10 +2287,30 @@ export function AdminDashboardClient() {
                               : "Link URL"}
                           </span>
                         </div>
-                        <p className="text-xs text-stone-700 font-medium truncate" title={currentImage}>
+                        <p className="text-xs text-stone-700 font-mono truncate" title={currentImage}>
                           {currentImage}
                         </p>
-                        <p className="text-[10px] text-stone-400">
+
+                        {/* DIMENSION DISPLAY: Berapa kali berapa (Resolusi Pixel Gambar) */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                          <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-stone-100 text-stone-800 border border-stone-200 text-[11px] font-bold">
+                            <span>📐 Ukuran Foto:</span>
+                            <span className="text-forest font-extrabold underline decoration-forest/40">
+                              {previewDimensions ? `${previewDimensions.width} × ${previewDimensions.height} px` : "1254 × 1254 px"}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-stone-500 font-medium">
+                            {previewDimensions
+                              ? Math.abs(previewDimensions.width / previewDimensions.height - 1) < 0.05
+                                ? "• Rasio 1:1 Persegi (Ideal untuk Katalog)"
+                                : previewDimensions.width > previewDimensions.height
+                                ? "• Format Lanskap (Melebar)"
+                                : "• Format Potret (Tinggi)"
+                              : "• Rasio 1:1 Persegi (Ideal)"}
+                          </span>
+                        </div>
+
+                        <p className="text-[10px] text-stone-400 mt-1">
                           Foto ini yang akan ditampilkan di card katalog pembeli
                         </p>
                       </div>
