@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCatalogData } from "@/lib/catalog";
 import { buildWhatsAppMessage, generateOrderCode } from "@/lib/format";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
+import { createPublicCatalogClient } from "@/lib/supabase/server";
 import type { CreateOrderRequest, ProductItem } from "@/types/catalog";
 
 export async function POST(request: Request) {
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
 
   // Start fetching authoritative catalog immediately
   const catalogPromise = getCatalogData();
-  const adminClient = createAdminSupabaseClient();
+  const dbClient = createAdminSupabaseClient() || createPublicCatalogClient();
   const catalog = await catalogPromise;
 
   const productMap = new Map<string, ProductItem>(
@@ -87,9 +88,9 @@ export async function POST(request: Request) {
 
   let persisted = false;
 
-  if (adminClient) {
+  if (dbClient) {
     try {
-      const { data: orderRow, error: orderError } = await adminClient
+      const { data: orderRow, error: orderError } = await dbClient
         .from("orders")
         .insert({
           order_code: orderCode,
@@ -118,12 +119,12 @@ export async function POST(request: Request) {
           image_path: product.imagePath,
         }));
 
-        const { error: itemsError } = await adminClient
+        const { error: itemsError } = await dbClient
           .from("order_items")
           .insert(lineRows);
 
         if (itemsError) {
-          await adminClient.from("orders").delete().eq("id", orderRow.id);
+          await dbClient.from("orders").delete().eq("id", orderRow.id);
         } else {
           persisted = true;
         }

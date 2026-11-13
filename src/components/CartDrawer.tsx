@@ -505,12 +505,12 @@ export function CartDrawer({
                     {submitting ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Menyiapkan Pesanan...</span>
+                        <span>Menyimpan Pesanan &amp; Menyiapkan WhatsApp...</span>
                       </>
                     ) : (
                       <>
                         <MessageCircle className="w-5 h-5" />
-                        <span>Bayar ke WhatsApp</span>
+                        <span>Simpan &amp; Lanjut ke WhatsApp</span>
                       </>
                     )}
                   </button>

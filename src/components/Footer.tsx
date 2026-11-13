@@ -2,7 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import Image from "next/image";
-import { Leaf, MapPin } from "lucide-react";
+import Link from "next/link";
+import { Leaf, Lock, MapPin } from "lucide-react";
 import { SELLER_WHATSAPP, SELLER_WHATSAPP_DISPLAY } from "@/lib/format";
 
 export function Footer() {
@@ -127,10 +128,17 @@ export function Footer() {
         </div>
 
         <div className="mt-10 pt-6 border-t border-stone-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-stone-500">
-          <p>© 2026 NTK Pandan Craft. Hak cipta dilindungi.</p>
+          <p>© 2026 Ciamis Pandan Craft. Hak cipta dilindungi.</p>
           <div className="flex items-center gap-4">
             <span>Pelestarian Budaya Lokal</span>
             <span>Kerajinan Berkelanjutan</span>
+            <Link
+              href="/admin/login"
+              className="inline-flex items-center gap-1 text-stone-400 hover:text-forest transition-colors"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Login Admin</span>
+            </Link>
           </div>
         </div>
       </div>
