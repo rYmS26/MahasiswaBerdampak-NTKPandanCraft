@@ -40,11 +40,6 @@ const CartDrawer = dynamic(
   { ssr: false },
 );
 
-const PersuasivePromoModal = dynamic(
-  () => import("@/components/PersuasivePromoModal").then((mod) => mod.PersuasivePromoModal),
-  { ssr: false },
-);
-
 const STORAGE_CART_KEY = "ntk_pandan_cart_v2";
 const STORAGE_CUSTOMER_KEY = "ntk_pandan_customer_v2";
 
@@ -442,8 +437,6 @@ export function StorefrontApp({
         onCustomerChange={setCustomer}
         onShowToast={showToast}
       />
-
-      <PersuasivePromoModal onSelectCategory={handleSelectCategory} />
     </StoreSettingsProvider>
   );
 }

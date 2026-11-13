@@ -16,6 +16,9 @@ import {
   ShoppingCart,
   Trash2,
   X,
+  ShieldCheck,
+  Sparkles,
+  HeartHandshake,
 } from "lucide-react";
 import {
   buildWhatsAppMessage,
@@ -71,6 +74,7 @@ export function CartDrawer({
   const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState("");
   const [receiptHint, setReceiptHint] = useState("");
+  const [showAssuranceModal, setShowAssuranceModal] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -224,6 +228,12 @@ export function CartDrawer({
   }
 
   function handleOpenWhatsApp() {
+    // Munculkan pop-up persuasif untuk meyakinkan pembeli sebelum diarahkan ke WhatsApp
+    setShowAssuranceModal(true);
+  }
+
+  function handleDirectOpenWhatsApp() {
+    setShowAssuranceModal(false);
     const waUrl = `https://wa.me/${sellerWhatsApp}?text=${encodeURIComponent(
       waMessage,
     )}`;
@@ -626,6 +636,130 @@ export function CartDrawer({
           </div>
         )}
       </div>
+
+      {/* POP-UP PERSUASIF UNTUK MEYAKINKAN PEMBELI SAAT CHECKOUT */}
+      {showAssuranceModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAssuranceModal(false);
+          }}
+        >
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-stone-200 flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-forest to-forest-light text-white p-5 sm:p-6 relative">
+              <button
+                type="button"
+                onClick={() => setShowAssuranceModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/90 hover:text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sand-gold/20 border border-sand-gold/40 text-sand-gold text-[10px] font-bold tracking-wide uppercase mb-2">
+                <Sparkles className="w-3 h-3 text-sand-gold" />
+                <span>Tinggal 1 Langkah Terakhir</span>
+              </div>
+
+              <h3 className="font-serif font-bold text-lg sm:text-xl leading-snug">
+                Yakin Ingin Menyelesaikan Pemesanan?
+              </h3>
+              <p className="text-white/80 text-xs mt-1 leading-relaxed">
+                Rincian barang Anda sudah siap dan akan diteruskan langsung ke WhatsApp pengrajin.
+              </p>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+              {/* Ringkasan Pesanan Box */}
+              <div className="p-3.5 rounded-2xl bg-cream-soft border border-stone-200/90 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-stone-400 block uppercase">Pesanan Anda</span>
+                  <span className="font-bold text-forest text-sm font-mono">{orderCode}</span>
+                  <p className="text-[11px] text-stone-500 mt-0.5">
+                    {totalQty} barang • {customer.name || "Pemesan"}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold text-stone-400 block uppercase">Total Nilai</span>
+                  <span className="font-bold text-forest text-base">{formatRupiah(totalPrice)}</span>
+                </div>
+              </div>
+
+              {/* 4 Jaminan Meyakinkan Pembeli */}
+              <div className="space-y-2">
+                <p className="font-bold text-stone-700 uppercase tracking-wider text-[10px]">
+                  Kenapa Belanja di Ciamis Pandan Craft Bebas Khawatir:
+                </p>
+
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-stone-50 border border-stone-200/70">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-stone-800">100% Anyaman Daun Pandan Pilihan</p>
+                      <p className="text-[11px] text-stone-500">
+                        Dipanen dari kebun lokal Rajadesa, diolah rapi tanpa pewarna atau pemutih kimia berbahaya.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-stone-50 border border-stone-200/70">
+                    <ShieldCheck className="w-4 h-4 text-forest shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-stone-800">Garansi Foto Asli (Real-Pic) Sebelum Kirim</p>
+                      <p className="text-[11px] text-stone-500">
+                        Admin akan mengirimkan foto fisik barang Anda via WhatsApp sebelum diserahkan ke ekspedisi.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-stone-50 border border-stone-200/70">
+                    <HeartHandshake className="w-4 h-4 text-olive shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-stone-800">Garansi Pengiriman &amp; Anti-Jamur</p>
+                      <p className="text-[11px] text-stone-500">
+                        Jika produk mengalami kerusakan selama di perjalanan, barang akan kami ganti baru!
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-2.5 p-2.5 rounded-xl bg-stone-50 border border-stone-200/70">
+                    <MessageCircle className="w-4 h-4 text-whatsapp shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold text-stone-800">Konsultasi Bebas &amp; Cek Ongkir Termurah</p>
+                      <p className="text-[11px] text-stone-500">
+                        Diskusikan pilihan ekspedisi terbaik atau kustomisasi ukuran langsung dengan pengrajin di chat WA.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="pt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={handleDirectOpenWhatsApp}
+                  className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-5 rounded-2xl bg-whatsapp hover:bg-whatsapp-dark text-white text-sm font-bold shadow-md hover:shadow-lg transition-all"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Ya, Buka WhatsApp &amp; Kirim Pesanan</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAssuranceModal(false)}
+                  className="w-full py-2.5 text-center text-xs text-stone-500 hover:text-stone-800 font-semibold transition-colors"
+                >
+                  Periksa Kembali Rincian Pesanan
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
