@@ -18,11 +18,13 @@ import { Footer } from "@/components/Footer";
 import { HeroSection } from "@/components/HeroSection";
 import { Navbar } from "@/components/Navbar";
 import { TestimonialsAndFaq } from "@/components/TestimonialsAndFaq";
+import { StoreSettingsProvider } from "@/components/StoreSettingsContext";
 import type {
   CartItem,
   CategoryItem,
   CustomerDetails,
   ProductItem,
+  StoreSettings,
 } from "@/types/catalog";
 
 const ProductDetailModal = dynamic(
@@ -55,6 +57,7 @@ interface StorefrontAppProps {
   categories: CategoryItem[];
   products: ProductItem[];
   bundles: ProductItem[];
+  settings?: StoreSettings;
 }
 
 function getCartKey(slug: string, variant: string, note: string): string {
@@ -65,6 +68,7 @@ export function StorefrontApp({
   categories,
   products,
   bundles,
+  settings,
 }: StorefrontAppProps) {
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -335,7 +339,7 @@ export function StorefrontApp({
   }, []);
 
   return (
-    <>
+    <StoreSettingsProvider settings={settings}>
       <Navbar
         totalQty={totalQty}
         activeSection={activeSection}
@@ -440,6 +444,6 @@ export function StorefrontApp({
       />
 
       <PersuasivePromoModal onSelectCategory={handleSelectCategory} />
-    </>
+    </StoreSettingsProvider>
   );
 }

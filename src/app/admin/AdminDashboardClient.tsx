@@ -27,8 +27,11 @@ import {
   X,
   FileSpreadsheet,
   Layers,
+  Settings,
+  Phone,
+  MessageCircle,
 } from "lucide-react";
-import { formatRupiah } from "@/lib/format";
+import { formatRupiah, formatWhatsAppDisplay } from "@/lib/format";
 import type {
   ProductItem,
   OrderRow,
@@ -56,7 +59,7 @@ interface DbProductRaw {
   sort_order: number;
 }
 
-type TabType = "overview" | "products" | "orders" | "reports";
+type TabType = "overview" | "products" | "orders" | "reports" | "settings";
 
 const PRESET_IMAGES = [
   { label: "Keranjang Bunga", path: "/katalog/keranjang_bunga.png" },
@@ -128,6 +131,13 @@ export function AdminDashboardClient() {
   const [reportPeriod, setReportPeriod] = useState<"today" | "7days" | "30days" | "all">("all");
   const [reportSummary, setReportSummary] = useState<SalesReportSummary | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
+
+  // Settings state (Dynamic WhatsApp)
+  const [sellerWhatsApp, setSellerWhatsApp] = useState("628815838516");
+  const [sellerWhatsAppDisplay, setSellerWhatsAppDisplay] = useState("+62 881-5838-516");
+  const [inputWhatsApp, setInputWhatsApp] = useState("628815838516");
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
 
   // Global action notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -211,19 +221,65 @@ export function AdminDashboardClient() {
     }
   }, [reportPeriod, showToast]);
 
+  // Fetch Settings
+  const fetchSettings = useCallback(async () => {
+    setLoadingSettings(true);
+    try {
+      const res = await fetch("/api/admin/settings");
+      const data = await res.json();
+      if (data.ok && data.settings) {
+        setSellerWhatsApp(data.settings.sellerWhatsApp);
+        setSellerWhatsAppDisplay(data.settings.sellerWhatsAppDisplay);
+        setInputWhatsApp(data.settings.sellerWhatsApp);
+      }
+    } catch {
+      // Fallback
+    } finally {
+      setLoadingSettings(false);
+    }
+  }, []);
+
   // Initial load
   useEffect(() => {
     fetchProducts();
     fetchOrders("all");
     fetchReports("all");
-  }, [fetchProducts, fetchOrders, fetchReports]);
+    fetchSettings();
+  }, [fetchProducts, fetchOrders, fetchReports, fetchSettings]);
 
   // Tab change actions
   useEffect(() => {
     if (activeTab === "products") fetchProducts();
     if (activeTab === "orders") fetchOrders(orderStatusFilter);
     if (activeTab === "reports") fetchReports(reportPeriod);
-  }, [activeTab, orderStatusFilter, reportPeriod, fetchProducts, fetchOrders, fetchReports]);
+    if (activeTab === "settings") fetchSettings();
+  }, [activeTab, orderStatusFilter, reportPeriod, fetchProducts, fetchOrders, fetchReports, fetchSettings]);
+
+  // Save Settings
+  async function handleSaveSettings(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sellerWhatsApp: inputWhatsApp }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Gagal menyimpan nomor WhatsApp.");
+      }
+      setSellerWhatsApp(data.sellerWhatsApp);
+      setSellerWhatsAppDisplay(data.sellerWhatsAppDisplay);
+      setInputWhatsApp(data.sellerWhatsApp);
+      showToast("Nomor WhatsApp tujuan pemesanan berhasil diperbarui!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan.";
+      alert(msg);
+    } finally {
+      setSavingSettings(false);
+    }
+  }
 
   // Handle Logout
   async function handleLogout() {
@@ -623,6 +679,19 @@ export function AdminDashboardClient() {
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>Laporan Penjualan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("settings")}
+            className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
+              activeTab === "settings"
+                ? "bg-forest text-white shadow-sm"
+                : "text-stone-600 hover:text-forest hover:bg-stone-100"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            <span>Pengaturan Toko</span>
           </button>
         </div>
 
@@ -1532,6 +1601,120 @@ export function AdminDashboardClient() {
                     </tbody>
                   </table>
                 </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================= TAB 5: PENGATURAN TOKO ================= */}
+        {activeTab === "settings" && (
+          <div className="max-w-3xl space-y-6">
+            <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="flex items-start gap-4 pb-6 border-b border-stone-100">
+                <div className="p-3.5 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                  <MessageCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-forest">
+                    Pengaturan Nomor WhatsApp Pesanan
+                  </h3>
+                  <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+                    Atur nomor WhatsApp resmi yang akan menerima chat pesanan otomatis, konsultasi ukuran, dan pesan struk belanja dari para pembeli.
+                  </p>
+                </div>
+              </div>
+
+              {loadingSettings ? (
+                <div className="p-8 text-center text-xs text-stone-400 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-forest" />
+                  <span>Memuat pengaturan dari database...</span>
+                </div>
+              ) : (
+                <form onSubmit={handleSaveSettings} className="space-y-6">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 uppercase tracking-wider mb-2">
+                      Nomor WhatsApp Penjual / Admin *
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        required
+                        value={inputWhatsApp}
+                        onChange={(e) => setInputWhatsApp(e.target.value)}
+                        placeholder="Contoh: 08815838516 atau 628815838516"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-stone-300 text-sm font-semibold text-stone-800 focus:outline-none focus:border-forest focus:ring-1 focus:ring-forest bg-stone-50/50"
+                      />
+                    </div>
+                    <p className="text-[11px] text-stone-400 mt-1.5 leading-relaxed">
+                      Format fleksibel: bisa diawali angka <code className="text-stone-600 font-mono">08...</code>, <code className="text-stone-600 font-mono">+62...</code>, atau <code className="text-stone-600 font-mono">62...</code>. Sistem akan otomatis membersihkan spasi dan tanda baca.
+                    </p>
+                  </div>
+
+                  {/* Real-time Preview Box */}
+                  <div className="rounded-2xl border border-stone-200 bg-cream-soft p-4 space-y-3">
+                    <p className="font-bold text-stone-700 uppercase tracking-wider text-[10px]">
+                      Pratinjau Tampilan &amp; Verifikasi
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div className="p-3 bg-white rounded-xl border border-stone-200/80">
+                        <span className="text-[10px] text-stone-400 block mb-0.5">Nomor Aktif di Toko:</span>
+                        <span className="font-bold text-forest text-sm">{sellerWhatsAppDisplay}</span>
+                        <span className="text-[10px] text-stone-500 block font-mono mt-0.5">{sellerWhatsApp}</span>
+                      </div>
+                      <div className="p-3 bg-white rounded-xl border border-stone-200/80">
+                        <span className="text-[10px] text-stone-400 block mb-0.5">Pratinjau Setelah Disimpan:</span>
+                        <span className="font-bold text-emerald-700 text-sm">
+                          {formatWhatsAppDisplay(inputWhatsApp)}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] text-stone-500">Tautan tes kirim:</span>
+                      <a
+                        href={`https://wa.me/${inputWhatsApp.replace(/\D/g, "")}?text=Tes%20koneksi%20WhatsApp%20Ciamis%20Pandan%20Craft`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-whatsapp hover:underline"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Uji Buka Chat WhatsApp</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Information banner */}
+                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-start gap-3">
+                    <CheckCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="leading-relaxed">
+                      <p className="font-bold">Diterapkan Secara Real-Time &amp; Dinamis</p>
+                      <p className="text-blue-800/90 mt-0.5">
+                        Ketika Anda menekan tombol <strong>Simpan Pengaturan WhatsApp</strong>, nomor akan tersimpan ke database Supabase dan secara otomatis langsung digunakan pada tombol checkout keranjang belanja, pop-up persuasif, kartu produk, dan footer sisi pembeli.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-2">
+                    <button
+                      type="submit"
+                      disabled={savingSettings}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-forest hover:bg-forest-light text-white text-xs font-bold shadow-md transition-all disabled:opacity-70"
+                    >
+                      {savingSettings ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Menyimpan Pengaturan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Simpan Pengaturan WhatsApp</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
           </div>

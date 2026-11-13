@@ -4,9 +4,19 @@ export const SELLER_WHATSAPP = (
   process.env.NEXT_PUBLIC_SELLER_WHATSAPP?.trim() || "628815838516"
 ).replace(/\D/g, "");
 
+export function normalizeWhatsAppNumber(input: string): string {
+  let digits = (input || "").replace(/\D/g, "");
+  if (digits.startsWith("0")) {
+    digits = "62" + digits.slice(1);
+  } else if (digits.startsWith("8")) {
+    digits = "62" + digits;
+  }
+  return digits;
+}
+
 export function formatWhatsAppDisplay(waNumber: string): string {
-  const digits = waNumber.replace(/\D/g, "");
-  if (digits.startsWith("62") && digits.length >= 11) {
+  const digits = normalizeWhatsAppNumber(waNumber);
+  if (digits.startsWith("62") && digits.length >= 10) {
     const local = digits.slice(2);
     return `+62 ${local.slice(0, 3)}-${local.slice(3, 7)}-${local.slice(7)}`;
   }

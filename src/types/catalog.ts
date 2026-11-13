@@ -39,10 +39,16 @@ export interface CustomerDetails {
   note: string;
 }
 
+export interface StoreSettings {
+  sellerWhatsApp: string;
+  sellerWhatsAppDisplay: string;
+}
+
 export interface CatalogResponse {
   categories: CategoryItem[];
   products: ProductItem[];
   bundles: ProductItem[];
+  settings: StoreSettings;
   source: "supabase" | "fallback";
 }
 

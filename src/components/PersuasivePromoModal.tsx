@@ -11,13 +11,14 @@ import {
   X,
   CheckCircle2,
 } from "lucide-react";
-import { SELLER_WHATSAPP } from "@/lib/format";
+import { useStoreSettings } from "@/components/StoreSettingsContext";
 
 interface PersuasivePromoModalProps {
   onSelectCategory?: (categorySlug: string) => void;
 }
 
 export function PersuasivePromoModal({ onSelectCategory }: PersuasivePromoModalProps) {
+  const { sellerWhatsApp } = useStoreSettings();
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function PersuasivePromoModal({ onSelectCategory }: PersuasivePromoModalP
     const message = encodeURIComponent(
       "Halo Ciamis Pandan Craft, saya tertarik dengan produk kerajinan anyaman pandan. Boleh tanya stok dan konsultasi ukuran/rekomendasi produk terbaik?"
     );
-    window.open(`https://wa.me/${SELLER_WHATSAPP}?text=${message}`, "_blank", "noopener,noreferrer");
+    window.open(`https://wa.me/${sellerWhatsApp}?text=${message}`, "_blank", "noopener,noreferrer");
   }
 
   if (!isOpen) return null;

@@ -18,12 +18,11 @@ import {
   X,
 } from "lucide-react";
 import {
-  SELLER_WHATSAPP,
-  SELLER_WHATSAPP_DISPLAY,
   buildWhatsAppMessage,
   formatRupiah,
 } from "@/lib/format";
 import { generateOrderReceiptBlob } from "@/lib/receipt-canvas";
+import { useStoreSettings } from "@/components/StoreSettingsContext";
 import type {
   CartItem,
   CreateOrderResponse,
@@ -62,6 +61,7 @@ export function CartDrawer({
   onCustomerChange,
   onShowToast,
 }: CartDrawerProps) {
+  const { sellerWhatsApp, sellerWhatsAppDisplay } = useStoreSettings();
   const [step, setStep] = useState<1 | 2>(1);
   const [errorMsg, setErrorMsg] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -224,7 +224,7 @@ export function CartDrawer({
   }
 
   function handleOpenWhatsApp() {
-    const waUrl = `https://wa.me/${SELLER_WHATSAPP}?text=${encodeURIComponent(
+    const waUrl = `https://wa.me/${sellerWhatsApp}?text=${encodeURIComponent(
       waMessage,
     )}`;
     window.open(waUrl, "_blank", "noopener,noreferrer");
@@ -620,7 +620,7 @@ export function CartDrawer({
               </button>
               <p className="text-[11px] text-center text-stone-500">
                 Pesan berisi produk, foto, jumlah, &amp; harga akan otomatis terisi di
-                chat penjual ({SELLER_WHATSAPP_DISPLAY}).
+                chat penjual ({sellerWhatsAppDisplay}).
               </p>
             </div>
           </div>

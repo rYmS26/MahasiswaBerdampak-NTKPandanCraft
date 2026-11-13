@@ -1,6 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import { ChevronDown, MessageCircle, Quote } from "lucide-react";
-import { SELLER_WHATSAPP } from "@/lib/format";
+import { useStoreSettings } from "@/components/StoreSettingsContext";
 
 const FAQS = [
   {
@@ -23,8 +25,9 @@ const FAQS = [
 ];
 
 export function TestimonialsAndFaq() {
-  const askWaHref = `https://wa.me/${SELLER_WHATSAPP}?text=${encodeURIComponent(
-    "Halo NTK Pandan Craft, saya ingin bertanya tentang produk anyaman pandan.",
+  const { sellerWhatsApp } = useStoreSettings();
+  const askWaHref = `https://wa.me/${sellerWhatsApp}?text=${encodeURIComponent(
+    "Halo Ciamis Pandan Craft, saya ingin bertanya tentang produk anyaman pandan.",
   )}`;
 
   return (

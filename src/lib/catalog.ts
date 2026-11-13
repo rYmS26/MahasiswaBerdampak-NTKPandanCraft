@@ -3,8 +3,14 @@ import {
   FALLBACK_CATEGORIES,
   FALLBACK_PRODUCTS,
 } from "@/data/fallback-catalog";
+import {
+  SELLER_WHATSAPP,
+  SELLER_WHATSAPP_DISPLAY,
+  formatWhatsAppDisplay,
+  normalizeWhatsAppNumber,
+} from "@/lib/format";
 import { createPublicCatalogClient } from "@/lib/supabase/server";
-import type { CatalogResponse, CategoryItem, ProductItem } from "@/types/catalog";
+import type { CatalogResponse, CategoryItem, ProductItem, StoreSettings } from "@/types/catalog";
 
 interface DbCategoryRow {
   slug: string;
@@ -71,17 +77,23 @@ function mapProduct(row: DbProductRow): ProductItem {
 export async function getCatalogData(): Promise<CatalogResponse> {
   const supabase = createPublicCatalogClient();
 
+  const defaultSettings: StoreSettings = {
+    sellerWhatsApp: SELLER_WHATSAPP,
+    sellerWhatsAppDisplay: SELLER_WHATSAPP_DISPLAY,
+  };
+
   if (!supabase) {
     return {
       categories: FALLBACK_CATEGORIES,
       products: FALLBACK_PRODUCTS,
       bundles: FALLBACK_BUNDLES,
+      settings: defaultSettings,
       source: "fallback",
     };
   }
 
   try {
-    const [categoriesRes, productsRes] = await Promise.all([
+    const [categoriesRes, productsRes, settingsRes] = await Promise.all([
       supabase
         .from("categories")
         .select("slug, label, image_path, tint_class, sort_order")
@@ -93,13 +105,30 @@ export async function getCatalogData(): Promise<CatalogResponse> {
         )
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
+      supabase
+        .from("store_settings")
+        .select("key, value")
+        .eq("key", "seller_whatsapp")
+        .maybeSingle(),
     ]);
+
+    let resolvedSettings = defaultSettings;
+    if (settingsRes.data?.value) {
+      const cleanWa = normalizeWhatsAppNumber(settingsRes.data.value);
+      if (cleanWa.length >= 10) {
+        resolvedSettings = {
+          sellerWhatsApp: cleanWa,
+          sellerWhatsAppDisplay: formatWhatsAppDisplay(cleanWa),
+        };
+      }
+    }
 
     if (categoriesRes.error || productsRes.error || !productsRes.data?.length) {
       return {
         categories: FALLBACK_CATEGORIES,
         products: FALLBACK_PRODUCTS,
         bundles: FALLBACK_BUNDLES,
+        settings: resolvedSettings,
         source: "fallback",
       };
     }
@@ -114,6 +143,7 @@ export async function getCatalogData(): Promise<CatalogResponse> {
       categories,
       products: allMapped.filter((item) => !item.isBundle),
       bundles: allMapped.filter((item) => item.isBundle),
+      settings: resolvedSettings,
       source: "supabase",
     };
   } catch {
@@ -121,6 +151,7 @@ export async function getCatalogData(): Promise<CatalogResponse> {
       categories: FALLBACK_CATEGORIES,
       products: FALLBACK_PRODUCTS,
       bundles: FALLBACK_BUNDLES,
+      settings: defaultSettings,
       source: "fallback",
     };
   }

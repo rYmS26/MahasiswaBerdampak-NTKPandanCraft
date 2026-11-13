@@ -4,19 +4,20 @@ import { useState, type FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Leaf, Lock, MapPin } from "lucide-react";
-import { SELLER_WHATSAPP, SELLER_WHATSAPP_DISPLAY } from "@/lib/format";
+import { useStoreSettings } from "@/components/StoreSettingsContext";
 
 export function Footer() {
+  const { sellerWhatsApp, sellerWhatsAppDisplay } = useStoreSettings();
   const [question, setQuestion] = useState("");
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const q = question.trim();
     const msg = q
-      ? `Halo NTK Pandan Craft, saya ingin bertanya: ${q}`
-      : "Halo NTK Pandan Craft, saya ingin berkonsultasi mengenai produk anyaman pandan.";
+      ? `Halo Ciamis Pandan Craft, saya ingin bertanya: ${q}`
+      : "Halo Ciamis Pandan Craft, saya ingin berkonsultasi mengenai produk anyaman pandan.";
     window.open(
-      `https://wa.me/${SELLER_WHATSAPP}?text=${encodeURIComponent(msg)}`,
+      `https://wa.me/${sellerWhatsApp}?text=${encodeURIComponent(msg)}`,
       "_blank",
       "noopener,noreferrer",
     );
@@ -122,7 +123,7 @@ export function Footer() {
               </button>
             </form>
             <span className="text-xs text-stone-500">
-              WhatsApp Resmi: {SELLER_WHATSAPP_DISPLAY}
+              WhatsApp Resmi: {sellerWhatsAppDisplay}
             </span>
           </div>
         </div>
