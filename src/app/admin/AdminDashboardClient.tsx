@@ -30,8 +30,11 @@ import {
   Settings,
   Phone,
   MessageCircle,
+  UploadCloud,
+  ImageIcon,
 } from "lucide-react";
 import { formatRupiah, formatWhatsAppDisplay } from "@/lib/format";
+import { compressImage, uploadProductImage } from "@/lib/image-upload";
 import type {
   ProductItem,
   OrderRow,
@@ -111,6 +114,10 @@ export function AdminDashboardClient() {
   });
   const [savingProduct, setSavingProduct] = useState(false);
   const [productFormError, setProductFormError] = useState("");
+  const [imageInputMode, setImageInputMode] = useState<"upload" | "preset" | "url">("upload");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadPreviewUrl, setUploadPreviewUrl] = useState<string>("");
+  const [uploadSizeInfo, setUploadSizeInfo] = useState<string>("");
 
   // Orders state
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -313,6 +320,9 @@ export function AdminDashboardClient() {
       is_active: true,
       sort_order: (products.length + 1),
     });
+    setImageInputMode("upload");
+    setUploadPreviewUrl("");
+    setUploadSizeInfo("");
     setProductFormError("");
     setIsProductModalOpen(true);
   }
@@ -321,6 +331,9 @@ export function AdminDashboardClient() {
     if (!p.id) return;
     setEditingProductId(p.id);
     const isPreset = PRESET_IMAGES.some((img) => img.path === p.imagePath);
+    setImageInputMode(isPreset ? "preset" : "upload");
+    setUploadPreviewUrl(p.imagePath);
+    setUploadSizeInfo("");
     setProductFormData({
       name: p.name,
       slug: p.slug,
@@ -333,14 +346,87 @@ export function AdminDashboardClient() {
       category_label: p.categoryLabel,
       category_slug: p.categories[0] || "popular",
       description: p.description,
-      image_path: isPreset ? p.imagePath : PRESET_IMAGES[0].path,
-      custom_image_url: isPreset ? "" : p.imagePath,
+      image_path: p.imagePath,
+      custom_image_url: isPreset ? "" : (p.imagePath.startsWith("http") ? p.imagePath : ""),
       is_bundle: p.isBundle,
       is_active: p.isActive !== undefined ? p.isActive : true,
       sort_order: p.sortOrder,
     });
     setProductFormError("");
     setIsProductModalOpen(true);
+  }
+
+  async function handleImageFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingImage(true);
+      setProductFormError("");
+
+      // 1. Client-side compression for optimal speed
+      const { blob, previewUrl } = await compressImage(file, 1200, 0.85);
+      setUploadPreviewUrl(previewUrl);
+      const originalMb = (file.size / (1024 * 1024)).toFixed(2);
+      const compressedKb = Math.round(blob.size / 1024);
+      setUploadSizeInfo(`Ukuran asli: ${originalMb} MB ➔ Terkompresi: ${compressedKb} KB (Hemat Kuota)`);
+
+      // 2. Upload to Supabase Storage via API
+      const result = await uploadProductImage(file);
+      if (!result.ok || !result.url) {
+        throw new Error(result.error || "Gagal mengunggah foto ke storage.");
+      }
+
+      setProductFormData((prev) => ({
+        ...prev,
+        image_path: result.url!,
+        custom_image_url: "",
+      }));
+
+      showToast("Foto produk berhasil diunggah ke Supabase Storage!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal mengunggah gambar.";
+      setProductFormError(msg);
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function handleImageDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+
+    try {
+      setUploadingImage(true);
+      setProductFormError("");
+
+      // 1. Client-side compression for optimal speed
+      const { blob, previewUrl } = await compressImage(file, 1200, 0.85);
+      setUploadPreviewUrl(previewUrl);
+      const originalMb = (file.size / (1024 * 1024)).toFixed(2);
+      const compressedKb = Math.round(blob.size / 1024);
+      setUploadSizeInfo(`Ukuran asli: ${originalMb} MB ➔ Terkompresi: ${compressedKb} KB (Hemat Kuota)`);
+
+      // 2. Upload to Supabase Storage via API
+      const result = await uploadProductImage(file);
+      if (!result.ok || !result.url) {
+        throw new Error(result.error || "Gagal mengunggah foto ke storage.");
+      }
+
+      setProductFormData((prev) => ({
+        ...prev,
+        image_path: result.url!,
+        custom_image_url: "",
+      }));
+
+      showToast("Foto produk berhasil diunggah ke Supabase Storage!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal mengunggah gambar.";
+      setProductFormError(msg);
+    } finally {
+      setUploadingImage(false);
+    }
   }
 
   async function handleSaveProduct(e: React.FormEvent) {
@@ -1878,68 +1964,289 @@ export function AdminDashboardClient() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Status Ketersediaan Stok
-                  </label>
-                  <select
-                    value={productFormData.stock_label}
-                    onChange={(e) => setProductFormData((prev) => ({ ...prev, stock_label: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest bg-white"
-                  >
-                    <option value="Tersedia">Tersedia</option>
-                    <option value="Tersisa 3">Tersisa 3</option>
-                    <option value="Tersisa 5">Tersisa 5</option>
-                    <option value="Pre-Order 2 Hari">Pre-Order 2 Hari</option>
-                    <option value="Habis">Habis</option>
-                  </select>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
+                      Status Stok (Fleksibel)
+                    </label>
+                    <span className="text-[10px] text-stone-400">Bisa ketik bebas atau pilih template</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={productFormData.stock_label}
+                        onChange={(e) =>
+                          setProductFormData((prev) => ({ ...prev, stock_label: e.target.value }))
+                        }
+                        placeholder="Ketik manual (misal: Sisa 2 pcs, Ready Besok, dll)"
+                        className="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest bg-white font-medium"
+                      />
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            setProductFormData((prev) => ({ ...prev, stock_label: e.target.value }));
+                          }
+                        }}
+                        className="px-2.5 py-2 rounded-xl border border-stone-300 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 cursor-pointer focus:outline-none focus:border-forest"
+                        title="Pilih Template Status"
+                      >
+                        <option value="">📋 Template...</option>
+                        <option value="Tersedia">Tersedia</option>
+                        <option value="Tersisa 3">Tersisa 3</option>
+                        <option value="Tersisa 5">Tersisa 5</option>
+                        <option value="Pre-Order 2 Hari">Pre-Order 2 Hari</option>
+                        <option value="Pre-Order 5 Hari">Pre-Order 5 Hari</option>
+                        <option value="Habis">Habis</option>
+                        <option value="Edisi Terbatas">Edisi Terbatas</option>
+                      </select>
+                    </div>
+
+                    {/* Quick Pill Templates */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-[10px] text-stone-400 font-semibold uppercase">Pilihan Cepat:</span>
+                      {[
+                        { label: "Tersedia", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                        { label: "Tersisa 3", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+                        { label: "Pre-Order 2 Hari", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                        { label: "Habis", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+                        { label: "Edisi Terbatas", cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                      ].map((item) => (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => setProductFormData((prev) => ({ ...prev, stock_label: item.label }))}
+                          className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                            productFormData.stock_label === item.label
+                              ? "ring-2 ring-forest font-bold " + item.cls
+                              : "hover:opacity-80 " + item.cls
+                          }`}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Image Selection */}
-              <div>
-                <label className="block font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  Pilih Gambar Produk
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 max-h-36 overflow-y-auto p-2 border border-stone-200 rounded-xl bg-stone-50">
-                  {PRESET_IMAGES.map((img) => (
+              {/* Image Selection / Upload Section */}
+              <div className="p-3.5 rounded-2xl border border-stone-200 bg-stone-50/60 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block font-bold text-stone-800 text-xs uppercase tracking-wider">
+                      Foto / Gambar Produk
+                    </label>
+                    <p className="text-[11px] text-stone-500">
+                      Otomatis dikompresi (WebP) & disimpan di Supabase Storage
+                    </p>
+                  </div>
+
+                  {/* Mode switch pills */}
+                  <div className="flex items-center gap-1 bg-stone-200/70 p-1 rounded-xl text-xs shrink-0 self-start sm:self-auto">
                     <button
-                      key={img.path}
                       type="button"
-                      onClick={() =>
-                        setProductFormData((prev) => ({
-                          ...prev,
-                          image_path: img.path,
-                          custom_image_url: "",
-                        }))
-                      }
-                      className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-center transition-all ${
-                        productFormData.image_path === img.path && !productFormData.custom_image_url
-                          ? "border-forest bg-white shadow-xs ring-2 ring-forest"
-                          : "border-stone-200 hover:border-stone-300 bg-white/70"
+                      onClick={() => setImageInputMode("upload")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
+                        imageInputMode === "upload"
+                          ? "bg-white text-forest shadow-xs font-semibold"
+                          : "text-stone-600 hover:text-stone-900"
                       }`}
                     >
-                      <div className="relative w-10 h-10 rounded-md overflow-hidden bg-cream-soft">
-                        <Image src={img.path} alt={img.label} fill sizes="40px" className="object-cover" />
-                      </div>
-                      <span className="text-[10px] text-stone-600 truncate w-full">{img.label}</span>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      Upload File
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => setImageInputMode("preset")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1 ${
+                        imageInputMode === "preset"
+                          ? "bg-white text-forest shadow-xs font-semibold"
+                          : "text-stone-600 hover:text-stone-900"
+                      }`}
+                    >
+                      <ImageIcon className="w-3.5 h-3.5" />
+                      Katalog Brosur
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImageInputMode("url")}
+                      className={`px-2.5 py-1 rounded-lg font-medium transition-all ${
+                        imageInputMode === "url"
+                          ? "bg-white text-forest shadow-xs font-semibold"
+                          : "text-stone-600 hover:text-stone-900"
+                      }`}
+                    >
+                      URL Link
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-[11px] text-stone-500">
-                    Atau gunakan URL / path gambar kustom:
-                  </label>
-                  <input
-                    type="text"
-                    value={productFormData.custom_image_url}
-                    onChange={(e) =>
-                      setProductFormData((prev) => ({ ...prev, custom_image_url: e.target.value }))
-                    }
-                    placeholder="https://... atau /katalog/nama-file.png"
-                    className="w-full px-3 py-1.5 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-forest mt-1"
-                  />
-                </div>
+                {/* TAB 1: Direct File Upload */}
+                {imageInputMode === "upload" && (
+                  <div className="space-y-2">
+                    <div
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={handleImageDrop}
+                      className="border-2 border-dashed border-stone-300 hover:border-forest rounded-xl p-4 bg-white text-center transition-all cursor-pointer relative group"
+                    >
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={handleImageFileUpload}
+                        disabled={uploadingImage}
+                        id="product-image-file-input"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+                      />
+
+                      {uploadingImage ? (
+                        <div className="flex flex-col items-center justify-center py-3">
+                          <Loader2 className="w-7 h-7 text-forest animate-spin mb-2" />
+                          <p className="text-xs font-semibold text-stone-700">Mengompresi & Mengunggah ke Storage...</p>
+                          <p className="text-[11px] text-stone-400">Harap tunggu sebentar</p>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center py-2">
+                          <div className="w-10 h-10 rounded-full bg-emerald-50 text-forest flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                            <UploadCloud className="w-5 h-5" />
+                          </div>
+                          <p className="text-xs font-bold text-stone-700 mb-0.5">
+                            Pilih File Foto atau Tarik (Drag & Drop) ke Sini
+                          </p>
+                          <p className="text-[11px] text-stone-500 mb-2">
+                            Mendukung JPG, PNG, WebP (Kamera HP/Foto Asli)
+                          </p>
+                          <span className="inline-block text-[11px] bg-forest text-white font-medium px-3 py-1 rounded-lg shadow-xs group-hover:bg-forest/90">
+                            Buka File Komputer / HP
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {uploadSizeInfo && (
+                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>{uploadSizeInfo}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* TAB 2: Katalog Brosur Presets */}
+                {imageInputMode === "preset" && (
+                  <div>
+                    <p className="text-[11px] text-stone-500 mb-2">
+                      Pilih salah satu foto produk kerajinan yang sudah ada di katalog brosur:
+                    </p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-7 gap-2 max-h-44 overflow-y-auto p-2 border border-stone-200 rounded-xl bg-white">
+                      {PRESET_IMAGES.map((img) => {
+                        const isSelected =
+                          productFormData.image_path === img.path && !productFormData.custom_image_url;
+                        return (
+                          <button
+                            key={img.path}
+                            type="button"
+                            onClick={() => {
+                              setProductFormData((prev) => ({
+                                ...prev,
+                                image_path: img.path,
+                                custom_image_url: "",
+                              }));
+                              setUploadPreviewUrl(img.path);
+                              setUploadSizeInfo("");
+                            }}
+                            className={`flex flex-col items-center gap-1 p-1.5 rounded-lg border text-center transition-all ${
+                              isSelected
+                                ? "border-forest bg-forest/5 ring-2 ring-forest"
+                                : "border-stone-200 hover:border-stone-300 bg-white"
+                            }`}
+                          >
+                            <div className="relative w-12 h-12 rounded-md overflow-hidden bg-cream-soft">
+                              <Image src={img.path} alt={img.label} fill sizes="48px" className="object-cover" />
+                            </div>
+                            <span className="text-[10px] text-stone-600 truncate w-full">{img.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: Custom URL */}
+                {imageInputMode === "url" && (
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-stone-600 block">
+                      Masukkan link / URL gambar langsung (misal: Supabase, Unsplash, Cloudinary):
+                    </label>
+                    <input
+                      type="text"
+                      value={productFormData.custom_image_url}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setProductFormData((prev) => ({ ...prev, custom_image_url: val }));
+                        if (val) setUploadPreviewUrl(val);
+                      }}
+                      placeholder="https://.../gambar-anyaman.webp"
+                      className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs focus:outline-none focus:border-forest bg-white"
+                    />
+                  </div>
+                )}
+
+                {/* PREVIEW GAMBAR TERPILIH (User-friendly Preview Card) */}
+                {(() => {
+                  const currentImage =
+                    productFormData.custom_image_url.trim() ||
+                    uploadPreviewUrl ||
+                    productFormData.image_path;
+
+                  if (!currentImage) return null;
+
+                  const isSupabase = currentImage.includes("supabase.co/storage");
+                  const isPreset = PRESET_IMAGES.some((img) => img.path === currentImage);
+
+                  return (
+                    <div className="flex items-center gap-3 p-2.5 bg-white border border-stone-200 rounded-xl shadow-xs">
+                      <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-stone-200 bg-stone-100 shrink-0">
+                        <img
+                          src={currentImage}
+                          alt="Preview Produk"
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = "/katalog/keranjang_bunga.png";
+                          }}
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 mb-0.5">
+                          <span className="text-[10px] uppercase tracking-wider font-bold text-stone-500">
+                            Preview Gambar Produk:
+                          </span>
+                          <span
+                            className={`text-[9px] font-semibold px-2 py-0.5 rounded-full ${
+                              isSupabase
+                                ? "bg-emerald-100 text-emerald-800"
+                                : isPreset
+                                ? "bg-stone-100 text-stone-700"
+                                : "bg-blue-100 text-blue-800"
+                            }`}
+                          >
+                            {isSupabase
+                              ? "Supabase Storage"
+                              : isPreset
+                              ? "Katalog Brosur"
+                              : "Link URL"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-stone-700 font-medium truncate" title={currentImage}>
+                          {currentImage}
+                        </p>
+                        <p className="text-[10px] text-stone-400">
+                          Foto ini yang akan ditampilkan di card katalog pembeli
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>
