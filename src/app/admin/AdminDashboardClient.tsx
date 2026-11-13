@@ -1980,16 +1980,44 @@ export function AdminDashboardClient() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Badge Khusus
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
+                      Badge Khusus (Label Promosi)
+                    </label>
+                    <span className="text-[10px] text-stone-400">Pojok atas foto produk</span>
+                  </div>
                   <input
                     type="text"
                     value={productFormData.badge}
                     onChange={(e) => setProductFormData((prev) => ({ ...prev, badge: e.target.value }))}
-                    placeholder="Contoh: Best Seller / Pilihan Pengrajin"
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest"
+                    placeholder="Contoh: Terlaris / Best Seller / Pilihan Pengrajin"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest bg-white font-medium"
                   />
+                  {/* Quick select badge pills */}
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                    <span className="text-[10px] text-stone-400 font-semibold uppercase">Pilihan Cepat:</span>
+                    {[
+                      "Terlaris",
+                      "Best Seller",
+                      "Produk Pilihan",
+                      "100% Bahan Alami",
+                      "Edisi Terbatas",
+                      "Karya Pengrajin",
+                    ].map((badge) => (
+                      <button
+                        key={badge}
+                        type="button"
+                        onClick={() => setProductFormData((prev) => ({ ...prev, badge }))}
+                        className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                          productFormData.badge === badge
+                            ? "bg-forest text-white border-forest font-bold"
+                            : "bg-stone-100 hover:bg-stone-200 text-stone-600 border-stone-200"
+                        }`}
+                      >
+                        {badge}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
