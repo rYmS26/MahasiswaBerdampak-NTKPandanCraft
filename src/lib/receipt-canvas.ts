@@ -1,4 +1,8 @@
-import { SELLER_WHATSAPP_DISPLAY, formatRupiah } from "@/lib/format";
+import {
+  SELLER_WHATSAPP_DISPLAY,
+  formatRupiah,
+  getProductUnitPrice,
+} from "@/lib/format";
 import type { CartItem, CustomerDetails, ProductItem } from "@/types/catalog";
 
 function loadImageSafe(src: string): Promise<HTMLImageElement | null> {
@@ -72,8 +76,9 @@ export async function generateOrderReceiptBlob(params: {
     const product = productMap.get(entry.slug);
     if (!product) return;
 
+    const unitPrice = getProductUnitPrice(product, entry.variant);
     totalQty += entry.qty;
-    const subtotal = product.price * entry.qty;
+    const subtotal = unitPrice * entry.qty;
     totalPrice += subtotal;
 
     ctx.fillStyle = "#faf8f4";
@@ -98,7 +103,7 @@ export async function generateOrderReceiptBlob(params: {
     ctx.fillStyle = "#5a655e";
     ctx.font = "15px Inter, system-ui, sans-serif";
     ctx.fillText(
-      `${entry.qty} pcs × ${formatRupiah(product.price)}`,
+      `${entry.qty} pcs × ${formatRupiah(unitPrice)}`,
       130,
       y + 64,
     );

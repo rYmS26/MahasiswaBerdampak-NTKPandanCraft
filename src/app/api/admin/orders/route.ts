@@ -32,7 +32,17 @@ export async function GET(request: Request) {
     }
 
     const { data: orders, error } = await query;
-    if (error) throw error;
+    if (error) {
+      if (error.code === "PGRST205" || error.code === "42P01") {
+        return NextResponse.json({
+          ok: true,
+          orders: [],
+          counts: { all: 0, pending_wa: 0, confirmed: 0, completed: 0, cancelled: 0 },
+          needsTableSetup: true,
+        });
+      }
+      throw error;
+    }
 
     // Fetch status counts for dashboard pills
     const { data: allOrders, error: countsError } = await supabase

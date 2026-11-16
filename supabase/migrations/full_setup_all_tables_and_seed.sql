@@ -117,7 +117,29 @@ drop policy if exists "Buyers can insert order_items" on public.order_items;
 create policy "Buyers can insert order_items" on public.order_items for insert to anon, authenticated with check (true);
 
 -- ==============================================================================
--- DATA AWAL (SEED DATA: KATEGORI, PRODUK BROSUR RESMI, & PENGATURAN WA)
+-- 6. STORAGE BUCKET (UNTUK UPLOAD FOTO PRODUK & GAMBAR HOMEPAGE)
+-- ==============================================================================
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'products',
+  'products',
+  true,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml']
+)
+on conflict (id) do update set
+  public = true,
+  file_size_limit = 5242880,
+  allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+
+drop policy if exists "Public read products storage" on storage.objects;
+create policy "Public read products storage"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'products');
+
+-- ==============================================================================
+-- DATA AWAL (SEED DATA: KATEGORI, PRODUK BROSUR RESMI, & PENGATURAN TOKO)
 -- ==============================================================================
 
 -- Kategori
@@ -135,12 +157,15 @@ on conflict (slug) do update set
   tint_class = excluded.tint_class,
   sort_order = excluded.sort_order;
 
--- Pengaturan Nomor WhatsApp Penjual
+-- Pengaturan Nomor WhatsApp Penjual & Gambar Utama Homepage
 insert into public.store_settings (key, value, description)
-values ('seller_whatsapp', '628815838516', 'Nomor WhatsApp resmi Ciamis Pandan Craft untuk menerima pesanan')
+values
+  ('seller_whatsapp', '628815838516', 'Nomor WhatsApp resmi Ciamis Pandan Craft untuk menerima pesanan'),
+  ('hero_image_url', '/recomended.png', 'Gambar utama (Hero Image) yang tampil di halaman depan Homepage')
 on conflict (key) do nothing;
 
 -- 12 Produk Resmi Sesuai Brosur + 2 Paket Hemat
+-- Catatan: Kolom variants mendukung format "Nama Ukuran::Harga" (misal "Lingkar 16 cm::50000")
 insert into public.products (
   slug, name, price, image_path, dimensions, variants, badge, stock_label,
   rating, reviews_count, categories, category_label, description, is_bundle, is_active, sort_order
@@ -156,7 +181,7 @@ values
   ('sandal-hotel', 'Sandal Hotel', 25000, '/katalog/sandal_hotel.png', 'T: 8cm | L: 26cm | P: 28cm', '{}', 'Homestay', 'Tersedia', 4.9, 115, array['accessories'], 'Perlengkapan Homestay', 'Cocok untuk kebutuhan hotel, homestay, maupun spa.', false, true, 8),
   ('lampu-hias-lengkung', 'Lampu Hias Lengkung', 350000, '/katalog/lampu_hias_lengkung.png', 'Tinggi: 117cm', '{}', 'Dekorasi', 'Tersedia', 4.8, 89, array['decor', 'lamp'], 'Lampu Hias', 'Lampu dekoratif dengan bentuk lengkung yang unik.', false, true, 9),
   ('lampu-hias', 'Lampu Hias', 350000, '/katalog/lampu_hias.png', 'Tinggi: 105cm | Lingkaran: 30cm', '{}', 'Dekorasi', 'Tersedia', 4.8, 89, array['decor', 'lamp'], 'Lampu Hias', 'Menghadirkan suasana hangat dan natural untuk ruang tamu maupun kamar tidur.', false, true, 10),
-  ('topi-pantai', 'Topi Pantai', 50000, '/katalog/topi_pantai.png', 'Lingkaran: 16cm, 17cm, 19cm, 20cm', array['Lingkar 16 cm', 'Lingkar 17 cm', 'Lingkar 19 cm', 'Lingkar 20 cm'], 'Best Seller', 'Tersedia', 4.8, 100, array['accessories', 'popular'], 'Tas & Aksesoris', 'Cocok digunakan saat beraktivitas di pantai maupun kegiatan luar ruangan.', false, true, 11),
+  ('topi-pantai', 'Topi Pantai', 50000, '/katalog/topi_pantai.png', 'Lingkaran: 16cm, 17cm, 19cm, 20cm', array['Lingkar 16 cm::50000', 'Lingkar 17 cm::50000', 'Lingkar 19 cm::55000', 'Lingkar 20 cm::60000'], 'Best Seller', 'Tersedia', 4.8, 100, array['accessories', 'popular'], 'Tas & Aksesoris', 'Cocok digunakan saat beraktivitas di pantai maupun kegiatan luar ruangan.', false, true, 11),
   ('kotak-tisu', 'Kotak Tisu', 35000, '/katalog/kotak_tisu.jpeg', 'P: 24cm | L: 13cm | T: 8cm', '{}', 'Wadah Penyimpanan', 'Tersedia', 4.8, 50, array['box', 'popular'], 'Wadah Penyimpanan', 'Cocok untuk melengkapi dekorasi meja ruang tamu maupun kamar tidur.', false, true, 12),
   ('paket-pemula-esensial', 'Paket Pemula Esensial (2 Produk)', 68000, '/recomended.png', 'Keranjang Mini + Tempat Tisu', '{}', 'Pilihan Terlaris', 'Tersedia', 4.9, 64, array['bundle'], 'Paket Hemat', 'Produk anyaman fungsional yang mudah ditata dan tidak memerlukan perawatan rumit. Sangat cocok bagi Anda yang baru pertama kali menghias rumah dengan dekorasi pandan alami.', true, true, 13),
   ('paket-oasis-ramah-lingkungan', 'Paket Oasis Ramah Lingkungan', 72000, '/recomended2.png', 'Set Anyaman 100% Pandan Alami', '{}', '100% Bahan Alami', 'Tersedia', 4.9, 58, array['bundle'], 'Paket Hemat', 'Dibuat dari daun pandan asli berkualitas tinggi tanpa pewarna kimia berbahaya. Permukaan halus dan serat alami yang kuat membuatnya aman ditempatkan di mana saja, termasuk di dekat anak-anak.', true, true, 14)

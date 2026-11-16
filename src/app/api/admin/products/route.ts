@@ -1,7 +1,37 @@
 import { NextResponse } from "next/server";
 import { isAuthenticatedAdmin } from "@/lib/admin-auth";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
-import { FALLBACK_CATEGORIES, FALLBACK_PRODUCTS } from "@/data/fallback-catalog";
+import {
+  FALLBACK_BUNDLES,
+  FALLBACK_CATEGORIES,
+  FALLBACK_PRODUCTS,
+} from "@/data/fallback-catalog";
+import { serializeProductVariants } from "@/lib/format";
+
+function getFallbackDbProducts() {
+  return [...FALLBACK_PRODUCTS, ...FALLBACK_BUNDLES].map((p, idx) => ({
+    id: idx + 1,
+    slug: p.slug,
+    name: p.name,
+    price: p.price,
+    image_path: p.imagePath,
+    dimensions: p.dimensions,
+    variants:
+      p.variantPrices && p.variantPrices.length > 0
+        ? serializeProductVariants(p.variantPrices)
+        : p.variants,
+    badge: p.badge,
+    stock_label: p.stockLabel,
+    rating: Number(p.rating) || 5.0,
+    reviews_count: p.reviewsCount,
+    categories: p.categories,
+    category_label: p.categoryLabel,
+    description: p.description,
+    is_bundle: p.isBundle,
+    is_active: true,
+    sort_order: p.sortOrder,
+  }));
+}
 
 export async function GET() {
   const isAuth = await isAuthenticatedAdmin();
@@ -11,10 +41,9 @@ export async function GET() {
 
   const supabase = createAdminSupabaseClient();
   if (!supabase) {
-    // If Supabase not connected, return fallback products
     return NextResponse.json({
       ok: true,
-      products: FALLBACK_PRODUCTS,
+      products: getFallbackDbProducts(),
       categories: FALLBACK_CATEGORIES,
       source: "fallback",
     });
@@ -34,6 +63,15 @@ export async function GET() {
     ]);
 
     if (productsRes.error) {
+      if (productsRes.error.code === "PGRST205" || productsRes.error.code === "42P01") {
+        return NextResponse.json({
+          ok: true,
+          products: getFallbackDbProducts(),
+          categories: FALLBACK_CATEGORIES,
+          source: "fallback",
+          needsTableSetup: true,
+        });
+      }
       throw productsRes.error;
     }
 

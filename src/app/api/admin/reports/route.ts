@@ -47,7 +47,21 @@ export async function GET(request: Request) {
     }
 
     const { data: rawOrders, error } = await query;
-    if (error) throw error;
+    if (error) {
+      if (error.code === "PGRST205" || error.code === "42P01") {
+        const emptySummary: SalesReportSummary = {
+          period,
+          totalRevenue: 0,
+          confirmedOrdersCount: 0,
+          totalUnitsSold: 0,
+          averageOrderValue: 0,
+          topProducts: [],
+          orders: [],
+        };
+        return NextResponse.json({ ok: true, summary: emptySummary, needsTableSetup: true });
+      }
+      throw error;
+    }
 
     const orders = (rawOrders || []) as OrderRow[];
 

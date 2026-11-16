@@ -11,7 +11,11 @@ import {
   Star,
   X,
 } from "lucide-react";
-import { formatRupiah } from "@/lib/format";
+import {
+  formatRupiah,
+  getProductUnitPrice,
+  parseProductVariants,
+} from "@/lib/format";
 import type { ProductItem } from "@/types/catalog";
 
 interface ProductDetailModalProps {
@@ -31,13 +35,26 @@ export function ProductDetailModal({
   onClose,
   onAdd,
 }: ProductDetailModalProps) {
+  const variantOptions =
+    product.variantPrices && product.variantPrices.length > 0
+      ? product.variantPrices
+      : parseProductVariants(product.variants, product.price);
+
   const [qty, setQty] = useState(1);
   const [variant, setVariant] = useState(
-    product.variants.length > 0 ? product.variants[1] ?? product.variants[0] : "",
+    variantOptions.length > 0
+      ? variantOptions[0].label
+      : product.variants.length > 0
+      ? product.variants[0]
+      : "",
   );
   const [note, setNote] = useState("");
 
-  const subtotal = product.price * qty;
+  const unitPrice = getProductUnitPrice(product, variant);
+  const subtotal = unitPrice * qty;
+  const hasMultiplePrices =
+    variantOptions.length > 1 &&
+    new Set(variantOptions.map((o) => o.price)).size > 1;
 
   return (
     <div
@@ -110,34 +127,59 @@ export function ProductDetailModal({
                 </span>
               </div>
 
-              <p className="text-2xl font-bold text-forest tabular-nums mt-3">
-                {formatRupiah(product.price)}
-              </p>
+              <div className="flex flex-wrap items-baseline gap-2.5 mt-3">
+                <p className="text-2xl font-bold text-forest tabular-nums">
+                  {formatRupiah(unitPrice)}
+                </p>
+                {variant ? (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-olive/10 text-olive border border-olive/20">
+                    Ukuran: {variant}
+                  </span>
+                ) : null}
+              </div>
 
               <p className="text-sm text-stone-600 leading-relaxed mt-3">
                 {product.description}
               </p>
 
-              {product.variants.length > 0 ? (
+              {variantOptions.length > 0 ? (
                 <div className="mt-4">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600 mb-2">
-                    Pilih Ukuran
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wider text-stone-600">
+                      Pilih Ukuran
+                    </label>
+                    {hasMultiplePrices ? (
+                      <span className="text-[11px] text-olive font-medium">
+                        Harga menyesuaikan ukuran
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {product.variants.map((v) => {
-                      const active = variant === v;
+                    {variantOptions.map((opt) => {
+                      const active = variant === opt.label;
                       return (
                         <button
-                          key={v}
+                          key={opt.label}
                           type="button"
-                          onClick={() => setVariant(v)}
-                          className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
+                          onClick={() => setVariant(opt.label)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                             active
-                              ? "bg-olive text-white border-olive shadow-sm"
+                              ? "bg-olive text-white border-olive shadow-sm ring-2 ring-olive/25"
                               : "bg-cream-soft text-forest border-stone-200 hover:border-olive"
                           }`}
                         >
-                          {v}
+                          <span>{opt.label}</span>
+                          {hasMultiplePrices ? (
+                            <span
+                              className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${
+                                active
+                                  ? "bg-white/20 text-white"
+                                  : "bg-white text-olive border border-stone-200/80"
+                              }`}
+                            >
+                              {formatRupiah(opt.price)}
+                            </span>
+                          ) : null}
                         </button>
                       );
                     })}

@@ -202,13 +202,34 @@ export function CatalogSection({
                 </div>
 
                 <div className="pt-3 mt-3 border-t border-stone-100 px-1 flex flex-col gap-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-lg font-bold text-forest tabular-nums">
-                      {formatRupiah(product.price)}
-                    </span>
+                  <div className="flex items-center justify-between gap-1">
+                    <div>
+                      {product.variantPrices &&
+                      product.variantPrices.length > 1 &&
+                      new Set(product.variantPrices.map((v) => v.price)).size > 1 ? (
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-olive leading-none mb-0.5">
+                            Mulai dari
+                          </span>
+                          <span className="text-lg font-bold text-forest tabular-nums leading-tight">
+                            {formatRupiah(
+                              Math.min(...product.variantPrices.map((v) => v.price)),
+                            )}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-lg font-bold text-forest tabular-nums">
+                          {formatRupiah(product.price)}
+                        </span>
+                      )}
+                    </div>
                     {qtyInCart > 0 ? (
                       <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-olive-light text-olive">
                         {qtyInCart} di keranjang
+                      </span>
+                    ) : product.variants.length > 0 ? (
+                      <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-cream-soft text-stone-600 border border-stone-200/80">
+                        {product.variants.length} Ukuran
                       </span>
                     ) : (
                       <span className="text-[11px] text-stone-400">

@@ -6,6 +6,11 @@ export interface CategoryItem {
   sortOrder: number;
 }
 
+export interface ProductVariantOption {
+  label: string;
+  price: number;
+}
+
 export interface ProductItem {
   id?: number;
   slug: string;
@@ -14,6 +19,7 @@ export interface ProductItem {
   imagePath: string;
   dimensions: string;
   variants: string[];
+  variantPrices?: ProductVariantOption[];
   badge: string;
   stockLabel: string;
   rating: string;
@@ -42,6 +48,7 @@ export interface CustomerDetails {
 export interface StoreSettings {
   sellerWhatsApp: string;
   sellerWhatsAppDisplay: string;
+  heroImageUrl: string;
 }
 
 export interface CatalogResponse {

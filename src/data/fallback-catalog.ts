@@ -233,6 +233,12 @@ export const FALLBACK_PRODUCTS: ProductItem[] = [
     imagePath: "/katalog/topi_pantai.png",
     dimensions: "Lingkaran: 16cm, 17cm, 19cm, 20cm",
     variants: ["Lingkar 16 cm", "Lingkar 17 cm", "Lingkar 19 cm", "Lingkar 20 cm"],
+    variantPrices: [
+      { label: "Lingkar 16 cm", price: 50000 },
+      { label: "Lingkar 17 cm", price: 50000 },
+      { label: "Lingkar 19 cm", price: 55000 },
+      { label: "Lingkar 20 cm", price: 60000 },
+    ],
     badge: "Best Seller",
     stockLabel: "Tersedia",
     rating: "4.8",

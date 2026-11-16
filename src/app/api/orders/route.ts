@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getCatalogData } from "@/lib/catalog";
-import { buildWhatsAppMessage, generateOrderCode } from "@/lib/format";
+import {
+  buildWhatsAppMessage,
+  generateOrderCode,
+  getProductUnitPrice,
+} from "@/lib/format";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 import { createPublicCatalogClient } from "@/lib/supabase/server";
 import type { CreateOrderRequest, ProductItem } from "@/types/catalog";
@@ -61,7 +65,9 @@ export async function POST(request: Request) {
     }
 
     const qty = Math.min(999, Math.max(1, Math.floor(Number(entry.qty) || 1)));
-    const subtotal = product.price * qty;
+    const variant = (entry.variant || "").trim();
+    const unitPrice = getProductUnitPrice(product, variant);
+    const subtotal = unitPrice * qty;
     totalQty += qty;
     totalPrice += subtotal;
 
@@ -70,9 +76,10 @@ export async function POST(request: Request) {
       cartItem: {
         slug: product.slug,
         qty,
-        variant: (entry.variant || "").trim(),
+        variant,
         note: (entry.note || "").trim(),
       },
+      unitPrice,
       subtotal,
     });
   }
@@ -106,18 +113,20 @@ export async function POST(request: Request) {
         .single();
 
       if (!orderError && orderRow?.id) {
-        const lineRows = normalizedItems.map(({ product, cartItem, subtotal }) => ({
-          order_id: orderRow.id,
-          product_id: product.id ?? null,
-          product_slug: product.slug,
-          product_name: product.name,
-          variant: cartItem.variant || null,
-          item_note: cartItem.note || null,
-          unit_price: product.price,
-          qty: cartItem.qty,
-          subtotal,
-          image_path: product.imagePath,
-        }));
+        const lineRows = normalizedItems.map(
+          ({ product, cartItem, unitPrice, subtotal }) => ({
+            order_id: orderRow.id,
+            product_id: product.id ?? null,
+            product_slug: product.slug,
+            product_name: product.name,
+            variant: cartItem.variant || null,
+            item_note: cartItem.note || null,
+            unit_price: unitPrice,
+            qty: cartItem.qty,
+            subtotal,
+            image_path: product.imagePath,
+          }),
+        );
 
         const { error: itemsError } = await dbClient
           .from("order_items")

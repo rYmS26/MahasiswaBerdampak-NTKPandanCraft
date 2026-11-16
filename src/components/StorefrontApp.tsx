@@ -19,6 +19,7 @@ import { HeroSection } from "@/components/HeroSection";
 import { Navbar } from "@/components/Navbar";
 import { TestimonialsAndFaq } from "@/components/TestimonialsAndFaq";
 import { StoreSettingsProvider } from "@/components/StoreSettingsContext";
+import { getProductUnitPrice } from "@/lib/format";
 import type {
   CartItem,
   CategoryItem,
@@ -211,8 +212,9 @@ export function StorefrontApp({
     for (const entry of cart) {
       const item = productMap.get(entry.slug);
       if (!item) continue;
+      const unitPrice = getProductUnitPrice(item, entry.variant);
       qty += entry.qty;
-      price += item.price * entry.qty;
+      price += unitPrice * entry.qty;
       bySlug.set(entry.slug, (bySlug.get(entry.slug) ?? 0) + entry.qty);
     }
 
@@ -253,9 +255,7 @@ export function StorefrontApp({
   const handleQuickAdd = useCallback(
     (product: ProductItem) => {
       const defaultVariant =
-        product.variants.length > 0
-          ? product.variants[1] ?? product.variants[0]
-          : "";
+        product.variants.length > 0 ? product.variants[0] : "";
       handleAddToCart(product, 1, defaultVariant, "", false);
     },
     [handleAddToCart],

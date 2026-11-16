@@ -23,6 +23,8 @@ import {
 import {
   buildWhatsAppMessage,
   formatRupiah,
+  getProductUnitPrice,
+  parseProductVariants,
 } from "@/lib/format";
 import { generateOrderReceiptBlob } from "@/lib/receipt-canvas";
 import { useStoreSettings } from "@/components/StoreSettingsContext";
@@ -324,7 +326,15 @@ export function CartDrawer({
                     {cart.map((entry, idx) => {
                       const product = productMap.get(entry.slug);
                       if (!product) return null;
-                      const subtotal = product.price * entry.qty;
+                      const variantOptions =
+                        product.variantPrices && product.variantPrices.length > 0
+                          ? product.variantPrices
+                          : parseProductVariants(product.variants, product.price);
+                      const hasDifferentPrices =
+                        variantOptions.length > 1 &&
+                        new Set(variantOptions.map((o) => o.price)).size > 1;
+                      const unitPrice = getProductUnitPrice(product, entry.variant);
+                      const subtotal = unitPrice * entry.qty;
 
                       return (
                         <div
@@ -348,10 +358,10 @@ export function CartDrawer({
                                   {product.name}
                                 </h4>
                                 <p className="text-xs text-stone-500 tabular-nums">
-                                  {formatRupiah(product.price)} / pcs
+                                  {formatRupiah(unitPrice)} / pcs
                                 </p>
 
-                                {product.variants.length > 0 ? (
+                                {variantOptions.length > 0 ? (
                                   <select
                                     value={entry.variant}
                                     onChange={(e) =>
@@ -359,9 +369,11 @@ export function CartDrawer({
                                     }
                                     className="mt-1 text-[11px] font-medium px-2 py-1 rounded-lg border border-stone-200 bg-cream-soft text-forest focus:outline-none focus:border-olive"
                                   >
-                                    {product.variants.map((v) => (
-                                      <option key={v} value={v}>
-                                        {v}
+                                    {variantOptions.map((opt) => (
+                                      <option key={opt.label} value={opt.label}>
+                                        {hasDifferentPrices
+                                          ? `${opt.label} (${formatRupiah(opt.price)})`
+                                          : opt.label}
                                       </option>
                                     ))}
                                   </select>

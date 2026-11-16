@@ -33,7 +33,13 @@ import {
   UploadCloud,
   ImageIcon,
 } from "lucide-react";
-import { formatRupiah, formatWhatsAppDisplay } from "@/lib/format";
+import {
+  DEFAULT_HERO_IMAGE,
+  formatRupiah,
+  formatWhatsAppDisplay,
+  parseProductVariants,
+  serializeProductVariants,
+} from "@/lib/format";
 import { compressImage, uploadProductImage } from "@/lib/image-upload";
 import type {
   ProductItem,
@@ -94,11 +100,30 @@ export function AdminDashboardClient() {
   // Product modal (Create / Edit)
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
-  const [productFormData, setProductFormData] = useState({
+  const [productFormData, setProductFormData] = useState<{
+    name: string;
+    slug: string;
+    price: string;
+    dimensions: string;
+    variant_options: { label: string; price: string }[];
+    badge: string;
+    stock_label: string;
+    rating: number;
+    reviews_count: number;
+    category_label: string;
+    category_slug: string;
+    description: string;
+    image_path: string;
+    custom_image_url: string;
+    is_bundle: boolean;
+    is_active: boolean;
+    sort_order: string;
+  }>({
     name: "",
     slug: "",
-    price: 50000,
+    price: "50000",
     dimensions: "",
+    variant_options: [],
     badge: "Terlaris",
     stock_label: "Tersedia",
     rating: 5.0,
@@ -110,7 +135,7 @@ export function AdminDashboardClient() {
     custom_image_url: "",
     is_bundle: false,
     is_active: true,
-    sort_order: 10,
+    sort_order: "10",
   });
   const [savingProduct, setSavingProduct] = useState(false);
   const [productFormError, setProductFormError] = useState("");
@@ -140,12 +165,17 @@ export function AdminDashboardClient() {
   const [reportSummary, setReportSummary] = useState<SalesReportSummary | null>(null);
   const [loadingReports, setLoadingReports] = useState(false);
 
-  // Settings state (Dynamic WhatsApp)
+  // Settings state (Dynamic WhatsApp & Homepage Hero Image)
   const [sellerWhatsApp, setSellerWhatsApp] = useState("628815838516");
   const [sellerWhatsAppDisplay, setSellerWhatsAppDisplay] = useState("+62 881-5838-516");
   const [inputWhatsApp, setInputWhatsApp] = useState("628815838516");
+  const [heroImageUrl, setHeroImageUrl] = useState(DEFAULT_HERO_IMAGE);
+  const [inputHeroImage, setInputHeroImage] = useState(DEFAULT_HERO_IMAGE);
+  const [uploadingHeroImage, setUploadingHeroImage] = useState(false);
+  const [savingHeroImage, setSavingHeroImage] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [needsTableSetup, setNeedsTableSetup] = useState(false);
 
   // Global action notification
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -164,26 +194,36 @@ export function AdminDashboardClient() {
       const res = await fetch("/api/admin/products");
       const data = await res.json();
       if (data.ok) {
+        if (data.needsTableSetup) {
+          setNeedsTableSetup(true);
+        } else {
+          setNeedsTableSetup(false);
+        }
         // Map raw DB rows to ProductItem format
-        const mapped: ProductItem[] = (data.products || []).map((p: DbProductRaw) => ({
-          id: p.id,
-          slug: p.slug,
-          name: p.name,
-          price: Number(p.price),
-          imagePath: p.image_path,
-          dimensions: p.dimensions,
-          variants: p.variants || [],
-          badge: p.badge,
-          stockLabel: p.stock_label,
-          rating: Number(p.rating).toFixed(1),
-          reviewsCount: p.reviews_count,
-          categories: p.categories || [],
-          categoryLabel: p.category_label,
-          description: p.description,
-          isBundle: Boolean(p.is_bundle),
-          isActive: p.is_active !== undefined ? Boolean(p.is_active) : true,
-          sortOrder: p.sort_order,
-        }));
+        const mapped: ProductItem[] = (data.products || []).map((p: DbProductRaw) => {
+          const basePrice = Number(p.price);
+          const parsedVariants = parseProductVariants(p.variants, basePrice);
+          return {
+            id: p.id,
+            slug: p.slug,
+            name: p.name,
+            price: basePrice,
+            imagePath: p.image_path,
+            dimensions: p.dimensions,
+            variants: parsedVariants.map((v) => v.label),
+            variantPrices: parsedVariants,
+            badge: p.badge,
+            stockLabel: p.stock_label,
+            rating: Number(p.rating).toFixed(1),
+            reviewsCount: p.reviews_count,
+            categories: p.categories || [],
+            categoryLabel: p.category_label,
+            description: p.description,
+            isBundle: Boolean(p.is_bundle),
+            isActive: p.is_active !== undefined ? Boolean(p.is_active) : true,
+            sortOrder: p.sort_order,
+          };
+        });
         setProducts(mapped);
       }
     } catch {
@@ -239,6 +279,10 @@ export function AdminDashboardClient() {
         setSellerWhatsApp(data.settings.sellerWhatsApp);
         setSellerWhatsAppDisplay(data.settings.sellerWhatsAppDisplay);
         setInputWhatsApp(data.settings.sellerWhatsApp);
+        if (data.settings.heroImageUrl) {
+          setHeroImageUrl(data.settings.heroImageUrl);
+          setInputHeroImage(data.settings.heroImageUrl);
+        }
       }
     } catch {
       // Fallback
@@ -263,7 +307,7 @@ export function AdminDashboardClient() {
     if (activeTab === "settings") fetchSettings();
   }, [activeTab, orderStatusFilter, reportPeriod, fetchProducts, fetchOrders, fetchReports, fetchSettings]);
 
-  // Save Settings
+  // Save Settings (WhatsApp)
   async function handleSaveSettings(e: React.FormEvent) {
     e.preventDefault();
     setSavingSettings(true);
@@ -289,6 +333,57 @@ export function AdminDashboardClient() {
     }
   }
 
+  // Upload Hero Image for Homepage
+  async function handleHeroImageFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setUploadingHeroImage(true);
+      const { previewUrl } = await compressImage(file, 1400, 0.85);
+      setInputHeroImage(previewUrl);
+
+      const result = await uploadProductImage(file);
+      if (!result.ok || !result.url) {
+        throw new Error(result.error || "Gagal mengunggah foto homepage ke storage.");
+      }
+
+      setInputHeroImage(result.url);
+      showToast("Foto Homepage berhasil diunggah! Klik 'Simpan Gambar Homepage' untuk menerapkan.");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Gagal mengunggah gambar homepage.";
+      alert(msg);
+    } finally {
+      setUploadingHeroImage(false);
+    }
+  }
+
+  // Save Hero Image Setting
+  async function handleSaveHeroImage(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingHeroImage(true);
+    try {
+      const cleanHero = inputHeroImage.trim() || DEFAULT_HERO_IMAGE;
+      const res = await fetch("/api/admin/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ heroImageUrl: cleanHero }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Gagal menyimpan gambar homepage.");
+      }
+      setHeroImageUrl(data.heroImageUrl || cleanHero);
+      setInputHeroImage(data.heroImageUrl || cleanHero);
+      showToast("Gambar utama Homepage berhasil diperbarui!");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Terjadi kesalahan.";
+      alert(msg);
+    } finally {
+      setSavingHeroImage(false);
+    }
+  }
+
   // Handle Logout
   async function handleLogout() {
     try {
@@ -306,8 +401,9 @@ export function AdminDashboardClient() {
     setProductFormData({
       name: "",
       slug: "",
-      price: 50000,
+      price: "50000",
       dimensions: "P: 25cm | L: 15cm | T: 10cm",
+      variant_options: [],
       badge: "Produk Pilihan",
       stock_label: "Tersedia",
       rating: 5.0,
@@ -319,7 +415,7 @@ export function AdminDashboardClient() {
       custom_image_url: "",
       is_bundle: false,
       is_active: true,
-      sort_order: (products.length + 1),
+      sort_order: String(products.length + 1),
     });
     setImageInputMode("upload");
     setUploadPreviewUrl("/katalog/keranjang_bunga.png");
@@ -337,11 +433,19 @@ export function AdminDashboardClient() {
     setUploadPreviewUrl(p.imagePath);
     setUploadSizeInfo("");
     setPreviewDimensions(null); // will automatically compute on load
+    const parsedVariants =
+      p.variantPrices && p.variantPrices.length > 0
+        ? p.variantPrices
+        : parseProductVariants(p.variants, p.price);
     setProductFormData({
       name: p.name,
       slug: p.slug,
-      price: p.price,
+      price: String(p.price),
       dimensions: p.dimensions,
+      variant_options: parsedVariants.map((v) => ({
+        label: v.label,
+        price: String(v.price),
+      })),
       badge: p.badge,
       stock_label: p.stockLabel,
       rating: parseFloat(p.rating) || 5.0,
@@ -353,7 +457,7 @@ export function AdminDashboardClient() {
       custom_image_url: isPreset ? "" : (p.imagePath.startsWith("http") ? p.imagePath : ""),
       is_bundle: p.isBundle,
       is_active: p.isActive !== undefined ? p.isActive : true,
-      sort_order: p.sortOrder,
+      sort_order: String(p.sortOrder),
     });
     setProductFormError("");
     setIsProductModalOpen(true);
@@ -437,6 +541,27 @@ export function AdminDashboardClient() {
   async function handleSaveProduct(e: React.FormEvent) {
     e.preventDefault();
     setProductFormError("");
+
+    const validVariants = productFormData.variant_options
+      .map((v) => ({
+        label: v.label.trim(),
+        price: Math.max(0, parseInt(String(v.price).replace(/\D/g, ""), 10) || 0),
+      }))
+      .filter((v) => v.label.length > 0 && v.price > 0);
+
+    let numericPrice = Math.max(
+      0,
+      parseInt(String(productFormData.price).replace(/\D/g, ""), 10) || 0,
+    );
+    if (numericPrice <= 0 && validVariants.length > 0) {
+      numericPrice = validVariants[0].price;
+    }
+
+    if (numericPrice <= 0) {
+      setProductFormError("Harga jual wajib diisi dengan angka lebih dari Rp 0.");
+      return;
+    }
+
     setSavingProduct(true);
 
     const chosenImagePath =
@@ -445,8 +570,9 @@ export function AdminDashboardClient() {
     const payload = {
       name: productFormData.name.trim(),
       slug: productFormData.slug.trim(),
-      price: productFormData.price,
+      price: numericPrice,
       dimensions: productFormData.dimensions.trim(),
+      variants: serializeProductVariants(validVariants),
       badge: productFormData.badge.trim(),
       stock_label: productFormData.stock_label.trim(),
       rating: productFormData.rating,
@@ -457,7 +583,7 @@ export function AdminDashboardClient() {
       image_path: chosenImagePath,
       is_bundle: productFormData.is_bundle,
       is_active: productFormData.is_active,
-      sort_order: productFormData.sort_order,
+      sort_order: parseInt(String(productFormData.sort_order), 10) || 1,
     };
 
     try {
@@ -1087,7 +1213,21 @@ export function AdminDashboardClient() {
                               </span>
                             ) : null}
                           </td>
-                          <td className="py-3 px-4 font-bold text-forest">{formatRupiah(p.price)}</td>
+                          <td className="py-3 px-4 font-bold text-forest">
+                            <div>{formatRupiah(p.price)}</div>
+                            {p.variantPrices && p.variantPrices.length > 0 ? (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {p.variantPrices.map((vp) => (
+                                  <span
+                                    key={vp.label}
+                                    className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200/80"
+                                  >
+                                    {vp.label}: {formatRupiah(vp.price)}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
+                          </td>
                           <td className="py-3 px-4 text-stone-500 max-w-[160px] truncate">{p.dimensions}</td>
                           <td className="py-3 px-4">
                             <span
@@ -1700,6 +1840,160 @@ export function AdminDashboardClient() {
         {/* ================= TAB 5: PENGATURAN TOKO ================= */}
         {activeTab === "settings" && (
           <div className="max-w-3xl space-y-6">
+            {needsTableSetup && (
+              <div className="bg-amber-50 border border-amber-300 rounded-3xl p-5 flex items-start gap-3.5 text-xs text-amber-900">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div className="space-y-1.5 leading-relaxed">
+                  <p className="font-bold text-sm">
+                    Skema Tabel Database di Proyek Supabase Baru Belum Diinisialisasi
+                  </p>
+                  <p>
+                    Bucket Storage <code className="font-mono font-bold">products</code> sudah siap di proyek baru (<code className="font-mono">gvftpzuhyjysewmyqepe</code>). Agar tabel produk, pesanan, dan pengaturan tersimpan permanen di database baru, silakan jalankan file <code className="font-mono font-bold">supabase/migrations/full_setup_all_tables_and_seed.sql</code> satu kali di <strong>Supabase SQL Editor</strong>.
+                  </p>
+                  <a
+                    href="https://supabase.com/dashboard/project/gvftpzuhyjysewmyqepe/sql/new"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 mt-1 px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Buka SQL Editor Supabase Baru (gvftpzuhyjysewmyqepe)</span>
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {/* CARD 1: PENGATURAN GAMBAR UTAMA HOMEPAGE (HERO IMAGE) */}
+            <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
+              <div className="flex items-start gap-4 pb-6 border-b border-stone-100">
+                <div className="p-3.5 rounded-2xl bg-olive/10 text-olive border border-olive/20 shrink-0">
+                  <ImageIcon className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-forest">
+                    Gambar Utama Homepage (Hero Image)
+                  </h3>
+                  <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+                    Ganti foto banner utama di bagian paling atas halaman depan (Homepage). Anda dapat mengunggah foto baru langsung dari perangkat (otomatis dikompres ke WebP &amp; disimpan di Supabase Storage) atau memilih dari koleksi foto yang tersedia.
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveHeroImage} className="space-y-5 text-xs">
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-start">
+                  {/* Live Hero Image Preview */}
+                  <div className="md:col-span-5 space-y-2">
+                    <span className="block font-bold text-stone-700 uppercase tracking-wider text-[10px]">
+                      Pratinjau Gambar Homepage:
+                    </span>
+                    <div className="relative aspect-[4/3] rounded-2xl overflow-hidden border border-stone-200 bg-cream-soft shadow-xs">
+                      <img
+                        src={inputHeroImage || heroImageUrl || DEFAULT_HERO_IMAGE}
+                        alt="Pratinjau Hero Homepage"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = DEFAULT_HERO_IMAGE;
+                        }}
+                      />
+                      <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-white/90 text-[10px] font-bold text-forest shadow-xs">
+                        100% Daun Pandan Alami
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Upload & Preset Controls */}
+                  <div className="md:col-span-7 space-y-3">
+                    <div>
+                      <label className="block font-bold text-stone-700 uppercase tracking-wider text-[11px] mb-1.5">
+                        1. Upload Foto Baru dari Perangkat
+                      </label>
+                      <div className="relative border-2 border-dashed border-stone-300 hover:border-forest rounded-2xl p-4 bg-stone-50/70 text-center transition-all cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handleHeroImageFileUpload}
+                          disabled={uploadingHeroImage}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                        />
+                        {uploadingHeroImage ? (
+                          <div className="flex items-center justify-center gap-2 py-2 text-forest font-semibold">
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>Mengompresi &amp; Mengunggah Foto Homepage...</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="inline-flex items-center gap-1.5 text-forest font-bold">
+                              <UploadCloud className="w-4 h-4" />
+                              <span>Klik atau Tarik Foto Banner Baru ke Sini</span>
+                            </div>
+                            <p className="text-[11px] text-stone-500">
+                              Rekomendasi rasio 4:3 atau 16:11 (misal 1200 × 825 px) • Otomatis WebP
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-stone-700 uppercase tracking-wider text-[11px] mb-1.5">
+                        2. Atau Pilih Cepat Gambar Koleksi / URL
+                      </label>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {[
+                          { label: "Koleksi Anyaman Utama", path: "/recomended.png" },
+                          { label: "Koleksi Set Oasis", path: "/recomended2.png" },
+                          { label: "Foto Profil Klasik", path: "/profil.jpeg" },
+                          { label: "Keranjang Bunga", path: "/katalog/keranjang_bunga.png" },
+                          { label: "Tas Kantor", path: "/katalog/tas_kantor.png" },
+                        ].map((preset) => (
+                          <button
+                            key={preset.path}
+                            type="button"
+                            onClick={() => setInputHeroImage(preset.path)}
+                            className={`px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-all ${
+                              inputHeroImage === preset.path
+                                ? "bg-forest text-white border-forest"
+                                : "bg-white text-stone-700 border-stone-200 hover:bg-stone-50"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={inputHeroImage}
+                        onChange={(e) => setInputHeroImage(e.target.value)}
+                        placeholder="/recomended.png atau https://..."
+                        className="w-full px-3 py-2 rounded-xl border border-stone-300 text-xs font-mono bg-white focus:outline-none focus:border-forest"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-stone-100">
+                  <button
+                    type="submit"
+                    disabled={savingHeroImage || uploadingHeroImage}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-forest hover:bg-forest-light text-white text-xs font-bold shadow-md transition-all disabled:opacity-70"
+                  >
+                    {savingHeroImage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Menyimpan Gambar Homepage...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Simpan Gambar Homepage</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* CARD 2: PENGATURAN NOMOR WHATSAPP PESANAN */}
             <div className="bg-white rounded-3xl border border-stone-200 p-6 sm:p-8 shadow-xs space-y-6">
               <div className="flex items-start gap-4 pb-6 border-b border-stone-100">
                 <div className="p-3.5 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
@@ -1877,20 +2171,36 @@ export function AdminDashboardClient() {
                 </div>
 
                 <div>
-                  <label className="block font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    Harga Jual (Rp) *
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
+                      Harga Jual Utama (Rp) *
+                    </label>
+                    <span className="text-[11px] font-bold text-olive">
+                      {productFormData.price
+                        ? formatRupiah(parseInt(productFormData.price, 10) || 0)
+                        : "Rp0"}
+                    </span>
+                  </div>
                   <input
-                    type="number"
-                    required
-                    min={0}
-                    step={1000}
+                    type="text"
+                    inputMode="numeric"
+                    required={productFormData.variant_options.length === 0}
                     value={productFormData.price}
-                    onChange={(e) =>
-                      setProductFormData((prev) => ({ ...prev, price: parseInt(e.target.value, 10) || 0 }))
-                    }
-                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm font-bold text-forest focus:outline-none focus:border-forest"
+                    onChange={(e) => {
+                      const rawDigits = e.target.value
+                        .replace(/\D/g, "")
+                        .replace(/^0+(?=\d)/, "");
+                      setProductFormData((prev) => ({
+                        ...prev,
+                        price: rawDigits,
+                      }));
+                    }}
+                    placeholder="Contoh: 75000 (ketik angka tanpa titik)"
+                    className="w-full px-3 py-2 rounded-xl border border-stone-300 text-sm font-bold text-forest focus:outline-none focus:border-forest bg-white"
                   />
+                  <span className="block text-[10px] text-stone-400 mt-1">
+                    Bisa dikosongkan lalu ketik angka baru. Jika ada variasi ukuran, ini menjadi harga utama/default.
+                  </span>
                 </div>
 
                 <div>
@@ -1928,6 +2238,143 @@ export function AdminDashboardClient() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* VARIASI UKURAN & HARGA BERBEDA (FULL WIDTH) */}
+                <div className="sm:col-span-2 p-3.5 rounded-2xl border border-stone-200 bg-cream-soft/60 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <label className="block font-bold text-stone-800 uppercase tracking-wider text-xs">
+                        Variasi Ukuran &amp; Harga Berbeda (Opsional)
+                      </label>
+                      <p className="text-[11px] text-stone-500">
+                        Tambahkan pilihan ukuran jika produk memiliki beberapa ukuran dengan harga masing-masing.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const base = parseInt(productFormData.price, 10) || 50000;
+                          setProductFormData((prev) => ({
+                            ...prev,
+                            variant_options: [
+                              { label: "Ukuran S (Kecil)", price: String(base) },
+                              { label: "Ukuran M (Sedang)", price: String(base + 15000) },
+                              { label: "Ukuran L (Besar)", price: String(base + 30000) },
+                            ],
+                          }));
+                        }}
+                        className="px-2.5 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-[11px] font-semibold text-stone-700 transition-colors"
+                      >
+                        + Template S / M / L
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setProductFormData((prev) => ({
+                            ...prev,
+                            variant_options: [
+                              ...prev.variant_options,
+                              {
+                                label: "",
+                                price: prev.price || "50000",
+                              },
+                            ],
+                          }))
+                        }
+                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-forest hover:bg-forest-light text-white text-[11px] font-bold shadow-xs transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Tambah Ukuran</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {productFormData.variant_options.length === 0 ? (
+                    <div className="text-[11px] text-stone-500 bg-white/80 border border-dashed border-stone-200 rounded-xl px-3 py-2.5 text-center">
+                      Produk ini menggunakan 1 harga tunggal ({productFormData.price ? formatRupiah(parseInt(productFormData.price, 10) || 0) : "Rp0"}). Klik <strong>&quot;+ Tambah Ukuran&quot;</strong> jika ingin membedakan harga per ukuran.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {productFormData.variant_options.map((opt, idx) => (
+                        <div
+                          key={idx}
+                          className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white p-2.5 rounded-xl border border-stone-200 shadow-2xs"
+                        >
+                          <div className="sm:col-span-6">
+                            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-0.5">
+                              Nama Ukuran / Variasi #{idx + 1}
+                            </label>
+                            <input
+                              type="text"
+                              value={opt.label}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setProductFormData((prev) => {
+                                  const next = [...prev.variant_options];
+                                  next[idx] = { ...next[idx], label: val };
+                                  return { ...prev, variant_options: next };
+                                });
+                              }}
+                              placeholder="Contoh: Ukuran S (20cm) / Lingkar 19 cm"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-medium text-stone-800 focus:outline-none focus:border-forest"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-5">
+                            <div className="flex items-center justify-between mb-0.5">
+                              <label className="block text-[10px] font-bold uppercase text-stone-400">
+                                Harga Ukuran Ini (Rp)
+                              </label>
+                              <span className="text-[10px] font-bold text-olive">
+                                {opt.price ? formatRupiah(parseInt(opt.price, 10) || 0) : "Rp0"}
+                              </span>
+                            </div>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={opt.price}
+                              onChange={(e) => {
+                                const raw = e.target.value
+                                  .replace(/\D/g, "")
+                                  .replace(/^0+(?=\d)/, "");
+                                setProductFormData((prev) => {
+                                  const next = [...prev.variant_options];
+                                  next[idx] = { ...next[idx], price: raw };
+                                  // Sync main price to first variant if first row is edited
+                                  const nextMainPrice = idx === 0 && raw ? raw : prev.price;
+                                  return {
+                                    ...prev,
+                                    price: nextMainPrice,
+                                    variant_options: next,
+                                  };
+                                });
+                              }}
+                              placeholder="Contoh: 65000"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-bold text-forest focus:outline-none focus:border-forest"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-1 flex justify-end sm:pt-4">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setProductFormData((prev) => ({
+                                  ...prev,
+                                  variant_options: prev.variant_options.filter((_, i) => i !== idx),
+                                }))
+                              }
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                              title="Hapus ukuran ini"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -2392,15 +2839,18 @@ export function AdminDashboardClient() {
                     Nomor Urut Tampil:
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     value={productFormData.sort_order}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "").replace(/^0+(?=\d)/, "");
                       setProductFormData((prev) => ({
                         ...prev,
-                        sort_order: parseInt(e.target.value, 10) || 1,
-                      }))
-                    }
-                    className="w-20 px-2 py-1 rounded-lg border border-stone-300 text-xs"
+                        sort_order: raw,
+                      }));
+                    }}
+                    placeholder="1"
+                    className="w-20 px-2 py-1 rounded-lg border border-stone-300 text-xs font-semibold text-forest"
                   />
                 </div>
               </div>

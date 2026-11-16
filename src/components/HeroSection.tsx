@@ -1,3 +1,5 @@
+"use client";
+
 import Image from "next/image";
 import {
   ArrowRight,
@@ -7,6 +9,15 @@ import {
   ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
+import { DEFAULT_HERO_IMAGE } from "@/lib/format";
+import { useStoreSettings } from "@/components/StoreSettingsContext";
+
+/**
+ * Gambar utama default Homepage.
+ * Dapat diganti secara manual dengan menaruh file di folder `public/` dan mengubah konstanta DEFAULT_HERO_IMAGE,
+ * ATAU diubah secara dinamis kapan saja melalui Dashboard Admin -> Tab "Pengaturan Toko".
+ */
+const DEFAULT_HOMEPAGE_HERO_IMAGE = DEFAULT_HERO_IMAGE;
 
 const PARTNER_LOGOS = [
   { src: "/logo/tutwuri.png", alt: "Logo Tut Wuri Handayani" },
@@ -40,6 +51,9 @@ const BENEFITS = [
 ];
 
 export function HeroSection() {
+  const { heroImageUrl } = useStoreSettings();
+  const activeHeroImage = heroImageUrl || DEFAULT_HOMEPAGE_HERO_IMAGE;
+
   return (
     <>
       <section id="beranda" className="max-w-[1280px] mx-auto px-4 sm:px-6 pt-5 pb-6">
@@ -108,7 +122,7 @@ export function HeroSection() {
               <div className="relative rounded-2xl overflow-hidden bg-white p-2.5 shadow-[0_18px_40px_-15px_rgba(20,38,28,0.14)] border border-stone-200/70">
                 <div className="relative aspect-[4/3] sm:aspect-[16/11] rounded-xl overflow-hidden bg-cream-soft">
                   <Image
-                    src="/profil.jpeg"
+                    src={activeHeroImage}
                     alt="Koleksi kerajinan anyaman pandan NTK Pandan Craft"
                     fill
                     sizes="(max-width: 1024px) 100vw, 50vw"

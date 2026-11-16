@@ -4,10 +4,12 @@ import {
   FALLBACK_PRODUCTS,
 } from "@/data/fallback-catalog";
 import {
+  DEFAULT_HERO_IMAGE,
   SELLER_WHATSAPP,
   SELLER_WHATSAPP_DISPLAY,
   formatWhatsAppDisplay,
   normalizeWhatsAppNumber,
+  parseProductVariants,
 } from "@/lib/format";
 import { createPublicCatalogClient } from "@/lib/supabase/server";
 import type { CatalogResponse, CategoryItem, ProductItem, StoreSettings } from "@/types/catalog";
@@ -50,14 +52,17 @@ function mapCategory(row: DbCategoryRow): CategoryItem {
 }
 
 function mapProduct(row: DbProductRow): ProductItem {
+  const basePrice = Number(row.price);
+  const parsedVariants = parseProductVariants(row.variants, basePrice);
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
-    price: Number(row.price),
+    price: basePrice,
     imagePath: row.image_path,
     dimensions: row.dimensions,
-    variants: Array.isArray(row.variants) ? row.variants : [],
+    variants: parsedVariants.map((v) => v.label),
+    variantPrices: parsedVariants,
     badge: row.badge,
     stockLabel: row.stock_label,
     rating: Number(row.rating).toFixed(1),
@@ -80,6 +85,7 @@ export async function getCatalogData(): Promise<CatalogResponse> {
   const defaultSettings: StoreSettings = {
     sellerWhatsApp: SELLER_WHATSAPP,
     sellerWhatsAppDisplay: SELLER_WHATSAPP_DISPLAY,
+    heroImageUrl: DEFAULT_HERO_IMAGE,
   };
 
   if (!supabase) {
@@ -108,18 +114,21 @@ export async function getCatalogData(): Promise<CatalogResponse> {
       supabase
         .from("store_settings")
         .select("key, value")
-        .eq("key", "seller_whatsapp")
-        .maybeSingle(),
+        .in("key", ["seller_whatsapp", "hero_image_url"]),
     ]);
 
-    let resolvedSettings = defaultSettings;
-    if (settingsRes.data?.value) {
-      const cleanWa = normalizeWhatsAppNumber(settingsRes.data.value);
-      if (cleanWa.length >= 10) {
-        resolvedSettings = {
-          sellerWhatsApp: cleanWa,
-          sellerWhatsAppDisplay: formatWhatsAppDisplay(cleanWa),
-        };
+    const resolvedSettings: StoreSettings = { ...defaultSettings };
+    if (Array.isArray(settingsRes.data)) {
+      for (const row of settingsRes.data) {
+        if (row.key === "seller_whatsapp" && row.value) {
+          const cleanWa = normalizeWhatsAppNumber(row.value);
+          if (cleanWa.length >= 10) {
+            resolvedSettings.sellerWhatsApp = cleanWa;
+            resolvedSettings.sellerWhatsAppDisplay = formatWhatsAppDisplay(cleanWa);
+          }
+        } else if (row.key === "hero_image_url" && row.value?.trim()) {
+          resolvedSettings.heroImageUrl = row.value.trim();
+        }
       }
     }
 
