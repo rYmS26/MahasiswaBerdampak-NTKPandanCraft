@@ -1840,26 +1840,32 @@ export function AdminDashboardClient() {
         {/* ================= TAB 5: PENGATURAN TOKO ================= */}
         {activeTab === "settings" && (
           <div className="max-w-3xl space-y-6">
-            {needsTableSetup && (
+            {needsTableSetup ? (
               <div className="bg-amber-50 border border-amber-300 rounded-3xl p-5 flex items-start gap-3.5 text-xs text-amber-900">
                 <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                 <div className="space-y-1.5 leading-relaxed">
                   <p className="font-bold text-sm">
-                    Skema Tabel Database di Proyek Supabase Baru Belum Diinisialisasi
+                    Skema Tabel Database di Proyek Supabase Belum Diinisialisasi
                   </p>
                   <p>
-                    Bucket Storage <code className="font-mono font-bold">products</code> sudah siap di proyek baru (<code className="font-mono">gvftpzuhyjysewmyqepe</code>). Agar tabel produk, pesanan, dan pengaturan tersimpan permanen di database baru, silakan jalankan file <code className="font-mono font-bold">supabase/migrations/full_setup_all_tables_and_seed.sql</code> satu kali di <strong>Supabase SQL Editor</strong>.
+                    Agar tabel produk, pesanan, dan pengaturan tersimpan permanen di database, silakan jalankan file <code className="font-mono font-bold">supabase/migrations/full_setup_all_tables_and_seed.sql</code> satu kali di <strong>Supabase SQL Editor</strong>.
                   </p>
-                  <a
-                    href="https://supabase.com/dashboard/project/gvftpzuhyjysewmyqepe/sql/new"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 mt-1 px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>Buka SQL Editor Supabase Baru (gvftpzuhyjysewmyqepe)</span>
-                  </a>
                 </div>
+              </div>
+            ) : (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-xs text-emerald-900">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="font-bold">Status Database Supabase: Terhubung &amp; Aktif</p>
+                    <p className="text-[11px] text-emerald-800/80">
+                      Seluruh tabel ({products.length} produk terdaftar) dan Storage Bucket berjalan normal di server.
+                    </p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider shrink-0">
+                  Online
+                </span>
               </div>
             )}
 

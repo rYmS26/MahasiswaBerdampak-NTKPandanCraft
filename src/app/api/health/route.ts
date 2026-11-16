@@ -1,46 +1,46 @@
 import { NextResponse } from "next/server";
+import { isAuthenticatedAdmin } from "@/lib/admin-auth";
 import { getSupabaseAdminConfig, getSupabasePublicConfig } from "@/lib/supabase/env";
 import { createPublicCatalogClient } from "@/lib/supabase/server";
 
 export async function GET() {
+  const isAdmin = await isAuthenticatedAdmin();
   const pub = getSupabasePublicConfig();
   const admin = getSupabaseAdminConfig();
   let dbReachable = false;
-  let productsCount = 0;
-  let dbError: string | null = null;
-
-  const projectRef = pub?.url
-    ? pub.url.replace(/^https?:\/\//, "").split(".")[0]
-    : null;
 
   if (pub) {
     try {
       const supabase = createPublicCatalogClient();
       if (supabase) {
-        const { count, error } = await supabase
+        const { error } = await supabase
           .from("products")
           .select("id", { head: true, count: "exact" })
           .limit(1);
         dbReachable = !error;
-        productsCount = count ?? 0;
-        if (error) {
-          dbError = error.message;
-        }
       }
-    } catch (err: unknown) {
+    } catch {
       dbReachable = false;
-      dbError = err instanceof Error ? err.message : "Unknown error";
     }
   }
+
+  // Untuk pengunjung publik, jangan pernah menampilkan URL database, project ref, atau detail internal
+  if (!isAdmin) {
+    return NextResponse.json({
+      ok: true,
+      status: dbReachable ? "healthy" : "fallback",
+    });
+  }
+
+  const projectRef = pub?.url
+    ? pub.url.replace(/^https?:\/\//, "").split(".")[0]
+    : null;
 
   return NextResponse.json({
     ok: true,
     activeProjectRef: projectRef,
-    supabaseUrl: pub?.url || null,
     supabasePublicConfigured: Boolean(pub),
     supabaseOrderPersistenceConfigured: Boolean(admin),
     dbReachable,
-    productsCount,
-    dbError,
   });
 }
