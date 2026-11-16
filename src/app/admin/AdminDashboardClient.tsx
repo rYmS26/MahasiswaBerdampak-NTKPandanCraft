@@ -778,11 +778,11 @@ export function AdminDashboardClient() {
           <div className="flex items-center gap-3">
             <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-stone-200 bg-cream-soft shrink-0">
               <Image
-                src="/logo/logo.png"
+                src="/logo.jpg"
                 alt="Ciamis Pandan Craft"
                 fill
                 sizes="36px"
-                className="object-contain"
+                className="object-cover"
               />
             </div>
             <div>

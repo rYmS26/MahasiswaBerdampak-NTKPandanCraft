@@ -61,11 +61,11 @@ export default function AdminLoginPage() {
           <div className="text-center space-y-3">
             <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cream-soft border border-stone-200 overflow-hidden shadow-xs">
               <Image
-                src="/logo/logo.png"
+                src="/logo.jpg"
                 alt="Logo Ciamis Pandan Craft"
-                width={48}
-                height={48}
-                className="object-contain"
+                width={56}
+                height={56}
+                className="object-cover"
               />
             </div>
             <div>
@@ -97,7 +97,7 @@ export default function AdminLoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@pandancraft.com atau admin"
+                  placeholder="Masukkan email atau username..."
                   className="w-full pl-10 pr-3.5 py-2.5 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest focus:ring-1 focus:ring-forest bg-stone-50/50"
                 />
               </div>
@@ -143,11 +143,9 @@ export default function AdminLoginPage() {
             </button>
           </form>
 
-          {/* Quick instructions / hint */}
+          {/* Security notice */}
           <div className="pt-2 border-t border-stone-100 text-[11px] text-stone-400 text-center leading-relaxed">
             Akses khusus pengelola toko &amp; pengrajin Ciamis Pandan Craft.
-            <br />
-            Kredensial bawaan: <span className="font-mono text-stone-600">admin</span> / <span className="font-mono text-stone-600">adminpandan2026</span>
           </div>
         </div>
       </div>
