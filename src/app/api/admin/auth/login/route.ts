@@ -5,18 +5,53 @@ import {
   createAdminToken,
   validateAdminCredentials,
 } from "@/lib/admin-auth";
+import {
+  checkRateLimit,
+  getClientIp,
+  sanitizePlainText,
+} from "@/lib/security";
 
 export async function POST(request: Request) {
+  const clientIp = getClientIp(request);
+  const rateLimit = checkRateLimit({
+    key: `admin_login:${clientIp}`,
+    limit: 5,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    minIntervalMs: 1500, // 1.5s minimum interval
+  });
+
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          rateLimit.reason ||
+          "Terlalu banyak percobaan login. Silakan tunggu beberapa menit lagi.",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSec) },
+      },
+    );
+  }
+
   try {
     const body = await request.json();
-    const email = String(body.email || "");
-    const password = String(body.password || "");
+    const email = sanitizePlainText(body?.email, 120);
+    const password = typeof body?.password === "string" ? body.password.slice(0, 200) : "";
+
+    if (!email || !password) {
+      return NextResponse.json(
+        { ok: false, error: "Email/Username dan Kata Sandi wajib diisi." },
+        { status: 400 },
+      );
+    }
 
     const isValid = validateAdminCredentials(email, password);
     if (!isValid) {
       return NextResponse.json(
         { ok: false, error: "Email/Username atau Kata Sandi salah." },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -34,7 +69,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json(
       { ok: false, error: "Terjadi kesalahan saat memproses login." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

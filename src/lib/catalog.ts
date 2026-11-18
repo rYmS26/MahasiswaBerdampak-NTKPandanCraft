@@ -9,6 +9,7 @@ import {
   SELLER_WHATSAPP_DISPLAY,
   formatWhatsAppDisplay,
   normalizeWhatsAppNumber,
+  parseProductStock,
   parseProductVariants,
 } from "@/lib/format";
 import { createPublicCatalogClient } from "@/lib/supabase/server";
@@ -27,6 +28,7 @@ interface DbProductRow {
   slug: string;
   name: string;
   price: number;
+  stock?: number | null;
   image_path: string;
   dimensions: string;
   variants: string[] | null;
@@ -53,18 +55,21 @@ function mapCategory(row: DbCategoryRow): CategoryItem {
 
 function mapProduct(row: DbProductRow): ProductItem {
   const basePrice = Number(row.price);
-  const parsedVariants = parseProductVariants(row.variants, basePrice);
+  const initialStock = parseProductStock(row.stock, row.stock_label);
+  const parsedVariants = parseProductVariants(row.variants, basePrice, initialStock);
+  const resolvedStock = parseProductStock(row.stock, row.stock_label, parsedVariants);
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
     price: basePrice,
+    stock: resolvedStock,
     imagePath: row.image_path,
     dimensions: row.dimensions,
     variants: parsedVariants.map((v) => v.label),
     variantPrices: parsedVariants,
     badge: row.badge,
-    stockLabel: row.stock_label,
+    stockLabel: resolvedStock <= 0 ? "Habis" : row.stock_label,
     rating: Number(row.rating).toFixed(1),
     reviewsCount: row.reviews_count,
     categories: Array.isArray(row.categories) ? row.categories : [],
@@ -106,9 +111,7 @@ export async function getCatalogData(): Promise<CatalogResponse> {
         .order("sort_order", { ascending: true }),
       supabase
         .from("products")
-        .select(
-          "id, slug, name, price, image_path, dimensions, variants, badge, stock_label, rating, reviews_count, categories, category_label, description, is_bundle, sort_order",
-        )
+        .select("*")
         .eq("is_active", true)
         .order("sort_order", { ascending: true }),
       supabase

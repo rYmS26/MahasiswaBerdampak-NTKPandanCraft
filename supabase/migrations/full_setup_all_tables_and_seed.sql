@@ -24,6 +24,7 @@ create table if not exists public.products (
   dimensions text not null default 'Standar',
   variants text[] not null default '{}',
   badge text not null default 'Produk Pilihan',
+  stock integer not null default 20 check (stock >= 0),
   stock_label text not null default 'Tersedia',
   rating numeric(2, 1) not null default 5.0,
   reviews_count integer not null default 25,
@@ -36,6 +37,10 @@ create table if not exists public.products (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Pastikan kolom stock tersedia jika tabel sudah dibuat sebelumnya
+alter table public.products
+  add column if not exists stock integer not null default 20 check (stock >= 0);
 
 create index if not exists products_slug_idx on public.products (slug);
 create index if not exists products_is_active_idx on public.products (is_active);
@@ -86,7 +91,7 @@ create table if not exists public.store_settings (
 );
 
 -- ==============================================================================
--- HAK AKSES & ROW LEVEL SECURITY (RLS)
+-- HAK AKSES & ROW LEVEL SECURITY (RLS - CYBERSECURITY HARDENING)
 -- ==============================================================================
 alter table public.categories enable row level security;
 alter table public.products enable row level security;
@@ -94,9 +99,15 @@ alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
 alter table public.store_settings enable row level security;
 
+-- Cabut semua izin manipulasi dari anon/authenticated terlebih dahulu
+revoke all on public.categories, public.products, public.orders, public.order_items, public.store_settings from anon, authenticated;
+
 grant usage on schema public to anon, authenticated, service_role;
+-- Publik (Anon) hanya boleh membaca katalog & pengaturan toko, serta membuat pesanan baru (INSERT)
 grant select on public.categories, public.products, public.store_settings to anon, authenticated;
 grant insert on public.orders, public.order_items to anon, authenticated;
+grant usage, select on all sequences in schema public to anon, authenticated, service_role;
+-- Hanya Admin Server-Side (service_role) yang boleh UPDATE / DELETE / SELECT laporan pesanan
 grant all on all tables in schema public to service_role;
 
 -- Kebijakan baca publik (katalog)
@@ -109,12 +120,16 @@ create policy "Public read active products" on public.products for select to ano
 drop policy if exists "Public read store_settings" on public.store_settings;
 create policy "Public read store_settings" on public.store_settings for select to anon, authenticated using (true);
 
--- Kebijakan simpan pesanan pembeli (anon/authenticated)
+-- Kebijakan simpan pesanan pembeli (anon/authenticated hanya boleh INSERT pesanan berstatus 'pending_wa')
 drop policy if exists "Buyers can insert orders" on public.orders;
-create policy "Buyers can insert orders" on public.orders for insert to anon, authenticated with check (true);
+create policy "Buyers can insert orders" on public.orders
+  for insert to anon, authenticated
+  with check (status = 'pending_wa' and total_qty > 0 and total_price >= 0);
 
 drop policy if exists "Buyers can insert order_items" on public.order_items;
-create policy "Buyers can insert order_items" on public.order_items for insert to anon, authenticated with check (true);
+create policy "Buyers can insert order_items" on public.order_items
+  for insert to anon, authenticated
+  with check (qty > 0 and unit_price >= 0 and subtotal >= 0);
 
 -- ==============================================================================
 -- 6. STORAGE BUCKET (UNTUK UPLOAD FOTO PRODUK & GAMBAR HOMEPAGE)
@@ -165,26 +180,26 @@ values
 on conflict (key) do nothing;
 
 -- 12 Produk Resmi Sesuai Brosur + 2 Paket Hemat
--- Catatan: Kolom variants mendukung format "Nama Ukuran::Harga" (misal "Lingkar 16 cm::50000")
+-- Catatan: Kolom variants mendukung format "Nama Ukuran::Harga::Stok" (misal "Lingkar 16 cm::50000::6")
 insert into public.products (
-  slug, name, price, image_path, dimensions, variants, badge, stock_label,
+  slug, name, price, image_path, dimensions, variants, badge, stock, stock_label,
   rating, reviews_count, categories, category_label, description, is_bundle, is_active, sort_order
 )
 values
-  ('keranjang-bunga', 'Keranjang Bunga', 75000, '/katalog/keranjang_bunga.png', 'Tinggi: 20cm | Lingkaran: 90cm', '{}', 'Terlaris', 'Tersedia', 5.0, 128, array['popular', 'decor', 'box'], 'Dekorasi & Keranjang', 'Keranjang bunga anyaman pandan yang indah dan menarik untuk diletakkan di ruang tamu, teras, maupun sudut favorit di rumah Anda.', false, true, 1),
-  ('tas-kantor', 'Tas Kantor', 100000, '/katalog/tas_kantor.png', 'T: 26cm | P: 39cm | L: 17cm', '{}', 'Best Seller', 'Tersedia', 4.9, 94, array['popular', 'accessories'], 'Tas & Aksesoris', 'Tas jinjing anyaman pandan elegan yang dirancang khusus untuk kebutuhan kerja, kuat membawa dokumen dan perlengkapan.', false, true, 2),
-  ('tempat-majalah', 'Tempat Majalah', 100000, '/katalog/tempat_majalah.png', 'T: 23cm | P: 26cm | L: 10cm', '{}', 'Wadah Penyimpanan', 'Tersedia', 5.0, 182, array['box'], 'Wadah Penyimpanan', 'Tempat majalah anyaman pandan yang elegan dan fungsional, cocok untuk ruang tamu maupun ruang kerja.', false, true, 3),
-  ('tas-belanja', 'Tas Belanja', 150000, '/katalog/tas_belanja.png', 'T: 32cm | P: 47cm | L: 18cm', '{}', 'Tas Belanja', 'Tersisa 4', 4.8, 76, array['accessories'], 'Tas & Aksesoris', 'Cocok untuk membawa kebutuhan sehari-hari dengan gaya natural, kuat, dan ramah lingkungan.', false, true, 4),
-  ('tong-sampah', 'Tong Sampah', 75000, '/katalog/tong_sampah.png', 'Tinggi: 27cm | Lebar: 21cm', '{}', 'Rumah Tangga', 'Tersedia', 4.9, 140, array['box'], 'Wadah Penyimpanan', 'Cocok untuk menjaga kerapian rumah dan ruangan dengan sentuhan anyaman alami.', false, true, 5),
-  ('vas-bunga', 'Vas Bunga', 100000, '/katalog/vas_bunga.png', 'Tinggi: 42cm | Lingkaran: 95cm', '{}', 'Dekorasi', 'Tersedia', 4.9, 62, array['decor'], 'Dekorasi Rumah', 'Vas memberikan sentuhan alami dan estetis untuk mempercantik interior rumah.', false, true, 6),
-  ('lampu-hias-berdiri', 'Lampu Hias Model Tinggi', 200000, '/katalog/lampu_berdiri.png', 'Tinggi: 94cm | Lingkaran: 38cm', '{}', 'Best Seller', 'Tersedia', 4.8, 89, array['decor', 'popular', 'lamp'], 'Lampu Hias', 'Lampu hias anyaman pandan dengan bentuk ramping dan elegan.', false, true, 7),
-  ('sandal-hotel', 'Sandal Hotel', 25000, '/katalog/sandal_hotel.png', 'T: 8cm | L: 26cm | P: 28cm', '{}', 'Homestay', 'Tersedia', 4.9, 115, array['accessories'], 'Perlengkapan Homestay', 'Cocok untuk kebutuhan hotel, homestay, maupun spa.', false, true, 8),
-  ('lampu-hias-lengkung', 'Lampu Hias Lengkung', 350000, '/katalog/lampu_hias_lengkung.png', 'Tinggi: 117cm', '{}', 'Dekorasi', 'Tersedia', 4.8, 89, array['decor', 'lamp'], 'Lampu Hias', 'Lampu dekoratif dengan bentuk lengkung yang unik.', false, true, 9),
-  ('lampu-hias', 'Lampu Hias', 350000, '/katalog/lampu_hias.png', 'Tinggi: 105cm | Lingkaran: 30cm', '{}', 'Dekorasi', 'Tersedia', 4.8, 89, array['decor', 'lamp'], 'Lampu Hias', 'Menghadirkan suasana hangat dan natural untuk ruang tamu maupun kamar tidur.', false, true, 10),
-  ('topi-pantai', 'Topi Pantai', 50000, '/katalog/topi_pantai.png', 'Lingkaran: 16cm, 17cm, 19cm, 20cm', array['Lingkar 16 cm::50000', 'Lingkar 17 cm::50000', 'Lingkar 19 cm::55000', 'Lingkar 20 cm::60000'], 'Best Seller', 'Tersedia', 4.8, 100, array['accessories', 'popular'], 'Tas & Aksesoris', 'Cocok digunakan saat beraktivitas di pantai maupun kegiatan luar ruangan.', false, true, 11),
-  ('kotak-tisu', 'Kotak Tisu', 35000, '/katalog/kotak_tisu.jpeg', 'P: 24cm | L: 13cm | T: 8cm', '{}', 'Wadah Penyimpanan', 'Tersedia', 4.8, 50, array['box', 'popular'], 'Wadah Penyimpanan', 'Cocok untuk melengkapi dekorasi meja ruang tamu maupun kamar tidur.', false, true, 12),
-  ('paket-pemula-esensial', 'Paket Pemula Esensial (2 Produk)', 68000, '/recomended.png', 'Keranjang Mini + Tempat Tisu', '{}', 'Pilihan Terlaris', 'Tersedia', 4.9, 64, array['bundle'], 'Paket Hemat', 'Produk anyaman fungsional yang mudah ditata dan tidak memerlukan perawatan rumit. Sangat cocok bagi Anda yang baru pertama kali menghias rumah dengan dekorasi pandan alami.', true, true, 13),
-  ('paket-oasis-ramah-lingkungan', 'Paket Oasis Ramah Lingkungan', 72000, '/recomended2.png', 'Set Anyaman 100% Pandan Alami', '{}', '100% Bahan Alami', 'Tersedia', 4.9, 58, array['bundle'], 'Paket Hemat', 'Dibuat dari daun pandan asli berkualitas tinggi tanpa pewarna kimia berbahaya. Permukaan halus dan serat alami yang kuat membuatnya aman ditempatkan di mana saja, termasuk di dekat anak-anak.', true, true, 14)
+  ('keranjang-bunga', 'Keranjang Bunga', 75000, '/katalog/keranjang_bunga.png', 'Tinggi: 20cm | Lingkaran: 90cm', '{}', 'Terlaris', 25, 'Tersedia', 5.0, 128, array['popular', 'decor', 'box'], 'Dekorasi & Keranjang', 'Keranjang bunga anyaman pandan yang indah dan menarik untuk diletakkan di ruang tamu, teras, maupun sudut favorit di rumah Anda.', false, true, 1),
+  ('tas-kantor', 'Tas Kantor', 100000, '/katalog/tas_kantor.png', 'T: 26cm | P: 39cm | L: 17cm', '{}', 'Best Seller', 18, 'Tersedia', 4.9, 94, array['popular', 'accessories'], 'Tas & Aksesoris', 'Tas jinjing anyaman pandan elegan yang dirancang khusus untuk kebutuhan kerja, kuat membawa dokumen dan perlengkapan.', false, true, 2),
+  ('tempat-majalah', 'Tempat Majalah', 100000, '/katalog/tempat_majalah.png', 'T: 23cm | P: 26cm | L: 10cm', '{}', 'Wadah Penyimpanan', 15, 'Tersedia', 5.0, 182, array['box'], 'Wadah Penyimpanan', 'Tempat majalah anyaman pandan yang elegan dan fungsional, cocok untuk ruang tamu maupun ruang kerja.', false, true, 3),
+  ('tas-belanja', 'Tas Belanja', 150000, '/katalog/tas_belanja.png', 'T: 32cm | P: 47cm | L: 18cm', '{}', 'Tas Belanja', 4, 'Tersisa 4', 4.8, 76, array['accessories'], 'Tas & Aksesoris', 'Cocok untuk membawa kebutuhan sehari-hari dengan gaya natural, kuat, dan ramah lingkungan.', false, true, 4),
+  ('tong-sampah', 'Tong Sampah', 75000, '/katalog/tong_sampah.png', 'Tinggi: 27cm | Lebar: 21cm', '{}', 'Rumah Tangga', 20, 'Tersedia', 4.9, 140, array['box'], 'Wadah Penyimpanan', 'Cocok untuk menjaga kerapian rumah dan ruangan dengan sentuhan anyaman alami.', false, true, 5),
+  ('vas-bunga', 'Vas Bunga', 100000, '/katalog/vas_bunga.png', 'Tinggi: 42cm | Lingkaran: 95cm', '{}', 'Dekorasi', 15, 'Tersedia', 4.9, 62, array['decor'], 'Dekorasi Rumah', 'Vas memberikan sentuhan alami dan estetis untuk mempercantik interior rumah.', false, true, 6),
+  ('lampu-hias-berdiri', 'Lampu Hias Model Tinggi', 200000, '/katalog/lampu_berdiri.png', 'Tinggi: 94cm | Lingkaran: 38cm', '{}', 'Best Seller', 10, 'Tersedia', 4.8, 89, array['decor', 'popular', 'lamp'], 'Lampu Hias', 'Lampu hias anyaman pandan dengan bentuk ramping dan elegan.', false, true, 7),
+  ('sandal-hotel', 'Sandal Hotel', 25000, '/katalog/sandal_hotel.png', 'T: 8cm | L: 26cm | P: 28cm', '{}', 'Homestay', 50, 'Tersedia', 4.9, 115, array['accessories'], 'Perlengkapan Homestay', 'Cocok untuk kebutuhan hotel, homestay, maupun spa.', false, true, 8),
+  ('lampu-hias-lengkung', 'Lampu Hias Lengkung', 350000, '/katalog/lampu_hias_lengkung.png', 'Tinggi: 117cm', '{}', 'Dekorasi', 8, 'Tersedia', 4.8, 89, array['decor', 'lamp'], 'Lampu Hias', 'Lampu dekoratif dengan bentuk lengkung yang unik.', false, true, 9),
+  ('lampu-hias', 'Lampu Hias', 350000, '/katalog/lampu_hias.png', 'Tinggi: 105cm | Lingkaran: 30cm', '{}', 'Dekorasi', 8, 'Tersedia', 4.8, 89, array['decor', 'lamp'], 'Lampu Hias', 'Menghadirkan suasana hangat dan natural untuk ruang tamu maupun kamar tidur.', false, true, 10),
+  ('topi-pantai', 'Topi Pantai', 50000, '/katalog/topi_pantai.png', 'Lingkaran: 16cm, 17cm, 19cm, 20cm', array['Lingkar 16 cm::50000::6', 'Lingkar 17 cm::50000::6', 'Lingkar 19 cm::55000::6', 'Lingkar 20 cm::60000::6'], 'Best Seller', 24, 'Tersedia', 4.8, 100, array['accessories', 'popular'], 'Tas & Aksesoris', 'Cocok digunakan saat beraktivitas di pantai maupun kegiatan luar ruangan.', false, true, 11),
+  ('kotak-tisu', 'Kotak Tisu', 35000, '/katalog/kotak_tisu.jpeg', 'P: 24cm | L: 13cm | T: 8cm', '{}', 'Wadah Penyimpanan', 30, 'Tersedia', 4.8, 50, array['box', 'popular'], 'Wadah Penyimpanan', 'Cocok untuk melengkapi dekorasi meja ruang tamu maupun kamar tidur.', false, true, 12),
+  ('paket-pemula-esensial', 'Paket Pemula Esensial (2 Produk)', 68000, '/recomended.png', 'Keranjang Mini + Tempat Tisu', '{}', 'Pilihan Terlaris', 12, 'Tersedia', 4.9, 64, array['bundle'], 'Paket Hemat', 'Produk anyaman fungsional yang mudah ditata dan tidak memerlukan perawatan rumit. Sangat cocok bagi Anda yang baru pertama kali menghias rumah dengan dekorasi pandan alami.', true, true, 13),
+  ('paket-oasis-ramah-lingkungan', 'Paket Oasis Ramah Lingkungan', 72000, '/recomended2.png', 'Set Anyaman 100% Pandan Alami', '{}', '100% Bahan Alami', 10, 'Tersedia', 4.9, 58, array['bundle'], 'Paket Hemat', 'Dibuat dari daun pandan asli berkualitas tinggi tanpa pewarna kimia berbahaya. Permukaan halus dan serat alami yang kuat membuatnya aman ditempatkan di mana saja, termasuk di dekat anak-anak.', true, true, 14)
 on conflict (slug) do update set
   name = excluded.name,
   price = excluded.price,
@@ -192,6 +207,7 @@ on conflict (slug) do update set
   dimensions = excluded.dimensions,
   variants = excluded.variants,
   badge = excluded.badge,
+  stock = excluded.stock,
   stock_label = excluded.stock_label,
   rating = excluded.rating,
   reviews_count = excluded.reviews_count,

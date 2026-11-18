@@ -6,7 +6,11 @@ import {
   FALLBACK_CATEGORIES,
   FALLBACK_PRODUCTS,
 } from "@/data/fallback-catalog";
-import { serializeProductVariants } from "@/lib/format";
+import {
+  formatStockLabelWithCount,
+  serializeProductVariants,
+} from "@/lib/format";
+import { sanitizePlainText, sanitizeSlug } from "@/lib/security";
 
 function getFallbackDbProducts() {
   return [...FALLBACK_PRODUCTS, ...FALLBACK_BUNDLES].map((p, idx) => ({
@@ -14,6 +18,7 @@ function getFallbackDbProducts() {
     slug: p.slug,
     name: p.name,
     price: p.price,
+    stock: p.stock,
     image_path: p.imagePath,
     dimensions: p.dimensions,
     variants:
@@ -103,9 +108,13 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const name = String(body.name || "").trim();
-    let slug = String(body.slug || "").trim().toLowerCase();
+    const name = sanitizePlainText(body.name, 120);
+    let slug = sanitizeSlug(body.slug || name, 120);
     const price = Math.max(0, parseInt(body.price, 10) || 0);
+    const stock =
+      body.stock !== undefined
+        ? Math.max(0, parseInt(String(body.stock), 10) || 0)
+        : 20;
 
     if (!name || price <= 0) {
       return NextResponse.json(
@@ -115,36 +124,54 @@ export async function POST(request: Request) {
     }
 
     if (!slug) {
-      slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)+/g, "");
+      slug = sanitizeSlug(name, 120);
     }
 
-    const newProduct = {
+    const rawStockLabel = sanitizePlainText(body.stock_label || "Tersedia", 60);
+    const syncedStockLabel = formatStockLabelWithCount(stock, rawStockLabel);
+
+    const baseProduct = {
       name,
       slug,
       price,
-      image_path: body.image_path?.trim() || "/katalog/keranjang_bunga.png",
-      dimensions: body.dimensions?.trim() || "Standar",
-      variants: Array.isArray(body.variants) ? body.variants : [],
-      badge: body.badge?.trim() || "Produk Pilihan",
-      stock_label: body.stock_label?.trim() || "Tersedia",
-      rating: parseFloat(body.rating) || 5.0,
-      reviews_count: parseInt(body.reviews_count, 10) || 10,
-      categories: Array.isArray(body.categories) && body.categories.length > 0 ? body.categories : ["popular"],
-      category_label: body.category_label?.trim() || "Kerajinan Pandan",
-      description: body.description?.trim() || "Kerajinan anyaman daun pandan berkualitas asli pengrajin Ciamis.",
+      image_path: sanitizePlainText(body.image_path, 400) || "/katalog/keranjang_bunga.png",
+      dimensions: sanitizePlainText(body.dimensions, 150) || "Standar",
+      variants: Array.isArray(body.variants)
+        ? body.variants.map((v: unknown) => sanitizePlainText(v, 150)).filter(Boolean)
+        : [],
+      badge: sanitizePlainText(body.badge, 60) || "Produk Pilihan",
+      stock_label: syncedStockLabel,
+      rating: Math.min(5, Math.max(1, parseFloat(body.rating) || 5.0)),
+      reviews_count: Math.max(0, parseInt(body.reviews_count, 10) || 10),
+      categories:
+        Array.isArray(body.categories) && body.categories.length > 0
+          ? body.categories.map((c: unknown) => sanitizeSlug(c, 50)).filter(Boolean)
+          : ["popular"],
+      category_label: sanitizePlainText(body.category_label, 80) || "Kerajinan Pandan",
+      description:
+        sanitizePlainText(body.description, 1000) ||
+        "Kerajinan anyaman daun pandan berkualitas asli pengrajin Ciamis.",
       is_bundle: Boolean(body.is_bundle),
       is_active: body.is_active !== undefined ? Boolean(body.is_active) : true,
-      sort_order: parseInt(body.sort_order, 10) || 99,
+      sort_order: Math.max(1, parseInt(body.sort_order, 10) || 99),
     };
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("products")
-      .insert(newProduct)
+      .insert({ ...baseProduct, stock })
       .select()
       .single();
+
+    // Fallback jika kolom `stock` belum ditambahkan di tabel products
+    if (error && error.message?.toLowerCase().includes("stock")) {
+      const retry = await supabase
+        .from("products")
+        .insert(baseProduct)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

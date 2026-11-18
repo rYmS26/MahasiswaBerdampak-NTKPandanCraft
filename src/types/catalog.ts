@@ -9,6 +9,7 @@ export interface CategoryItem {
 export interface ProductVariantOption {
   label: string;
   price: number;
+  stock?: number;
 }
 
 export interface ProductItem {
@@ -16,6 +17,7 @@ export interface ProductItem {
   slug: string;
   name: string;
   price: number;
+  stock: number;
   imagePath: string;
   dimensions: string;
   variants: string[];
@@ -63,6 +65,8 @@ export interface CreateOrderRequest {
   customer: CustomerDetails;
   items: CartItem[];
   siteOrigin?: string;
+  honeypot?: string;
+  formLoadedAt?: number;
 }
 
 export interface CreateOrderResponse {

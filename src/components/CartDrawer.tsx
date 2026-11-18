@@ -23,6 +23,7 @@ import {
 import {
   buildWhatsAppMessage,
   formatRupiah,
+  getProductAvailableStock,
   getProductUnitPrice,
   parseProductVariants,
 } from "@/lib/format";
@@ -77,13 +78,26 @@ export function CartDrawer({
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState("");
   const [receiptHint, setReceiptHint] = useState("");
   const [showAssuranceModal, setShowAssuranceModal] = useState(false);
+  const [honeypot, setHoneypot] = useState("");
+  const [formLoadedAt, setFormLoadedAt] = useState<number>(() => Date.now());
+  const [cooldownSec, setCooldownSec] = useState(0);
 
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      setFormLoadedAt(Date.now());
+    } else {
       setStep(1);
       setErrorMsg("");
     }
   }, [open]);
+
+  useEffect(() => {
+    if (cooldownSec <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownSec((c) => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownSec]);
 
   useEffect(() => {
     if (cart.length === 0) {
@@ -104,6 +118,11 @@ export function CartDrawer({
   async function handleProceedToCheckout() {
     if (cart.length === 0) return;
 
+    if (cooldownSec > 0) {
+      setErrorMsg(`Mohon tunggu ${cooldownSec} detik sebelum mengirim pesanan lagi.`);
+      return;
+    }
+
     const name = customer.name.trim();
     const address = customer.address.trim();
 
@@ -112,6 +131,25 @@ export function CartDrawer({
         "Mohon isi Nama Pemesan dan Alamat / Kota Pengiriman terlebih dahulu.",
       );
       return;
+    }
+
+    // Validasi stok di sisi client sebelum kirim ke server
+    for (const entry of cart) {
+      const product = productMap.get(entry.slug);
+      if (!product) continue;
+      const available = getProductAvailableStock(product, entry.variant);
+      if (available <= 0) {
+        setErrorMsg(
+          `Maaf, stok untuk "${product.name}" sedang habis. Silakan hapus dari keranjang.`,
+        );
+        return;
+      }
+      if (entry.qty > available) {
+        setErrorMsg(
+          `Jumlah "${product.name}" (${entry.qty} pcs) melebihi sisa stok (${available} pcs).`,
+        );
+        return;
+      }
     }
 
     setErrorMsg("");
@@ -137,22 +175,24 @@ export function CartDrawer({
           },
           items: cart,
           siteOrigin,
+          honeypot,
+          formLoadedAt,
         }),
       });
 
       const data = (await res.json()) as CreateOrderResponse;
-      if (res.ok && data.ok) {
-        resolvedCode = data.orderCode;
-        resolvedMessage = data.whatsappMessage;
-        savedToDb = data.persisted;
-      } else {
-        resolvedMessage = buildWhatsAppMessage({
-          items: cart,
-          productMap,
-          customer: { name, address, note: customer.note.trim() },
-          siteOrigin,
-        });
+      if (!res.ok || !data.ok) {
+        setErrorMsg(
+          data.error || "Gagal memproses pesanan. Mohon periksa jumlah stok dan data Anda.",
+        );
+        setSubmitting(false);
+        return;
       }
+
+      resolvedCode = data.orderCode;
+      resolvedMessage = data.whatsappMessage;
+      savedToDb = data.persisted;
+      setCooldownSec(10);
     } catch {
       resolvedMessage = buildWhatsAppMessage({
         items: cart,
@@ -329,12 +369,14 @@ export function CartDrawer({
                       const variantOptions =
                         product.variantPrices && product.variantPrices.length > 0
                           ? product.variantPrices
-                          : parseProductVariants(product.variants, product.price);
+                          : parseProductVariants(product.variants, product.price, product.stock);
                       const hasDifferentPrices =
                         variantOptions.length > 1 &&
                         new Set(variantOptions.map((o) => o.price)).size > 1;
                       const unitPrice = getProductUnitPrice(product, entry.variant);
+                      const availableStock = getProductAvailableStock(product, entry.variant);
                       const subtotal = unitPrice * entry.qty;
+                      const reachedMaxStock = entry.qty >= availableStock;
 
                       return (
                         <div
@@ -358,7 +400,16 @@ export function CartDrawer({
                                   {product.name}
                                 </h4>
                                 <p className="text-xs text-stone-500 tabular-nums">
-                                  {formatRupiah(unitPrice)} / pcs
+                                  {formatRupiah(unitPrice)} / pcs •{" "}
+                                  <span
+                                    className={
+                                      availableStock <= 0
+                                        ? "text-red-600 font-semibold"
+                                        : "text-olive font-semibold"
+                                    }
+                                  >
+                                    Stok: {availableStock}
+                                  </span>
                                 </p>
 
                                 {variantOptions.length > 0 ? (
@@ -411,8 +462,14 @@ export function CartDrawer({
                                 </span>
                                 <button
                                   type="button"
+                                  disabled={reachedMaxStock}
                                   onClick={() => onUpdateQty(idx, 1)}
-                                  className="w-7 h-7 flex items-center justify-center text-forest hover:bg-stone-200/70 rounded-r-full"
+                                  title={
+                                    reachedMaxStock
+                                      ? `Maksimal pembelian sesuai sisa stok (${availableStock} pcs)`
+                                      : "Tambah jumlah"
+                                  }
+                                  className="w-7 h-7 flex items-center justify-center text-forest hover:bg-stone-200/70 disabled:opacity-35 disabled:cursor-not-allowed rounded-r-full"
                                   aria-label="Tambah jumlah"
                                 >
                                   <Plus className="w-3.5 h-3.5" />
@@ -497,6 +554,20 @@ export function CartDrawer({
                       />
                     </div>
 
+                    {/* Honeypot Anti-Bot Field (Tersembunyi dari manusia) */}
+                    <div className="hidden" aria-hidden="true">
+                      <label htmlFor="checkout-company-website">Website</label>
+                      <input
+                        id="checkout-company-website"
+                        type="text"
+                        name="website"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={honeypot}
+                        onChange={(e) => setHoneypot(e.target.value)}
+                      />
+                    </div>
+
                     {errorMsg ? (
                       <p className="text-xs font-medium text-red-600">{errorMsg}</p>
                     ) : null}
@@ -520,7 +591,7 @@ export function CartDrawer({
                   </div>
                   <button
                     type="button"
-                    disabled={submitting}
+                    disabled={submitting || cooldownSec > 0}
                     onClick={handleProceedToCheckout}
                     className="w-full inline-flex items-center justify-center gap-2 py-3.5 px-5 rounded-xl bg-whatsapp hover:bg-whatsapp-dark disabled:opacity-70 text-white text-sm font-bold shadow-sm transition-colors"
                   >
@@ -529,6 +600,8 @@ export function CartDrawer({
                         <Loader2 className="w-5 h-5 animate-spin" />
                         <span>Menyimpan Pesanan &amp; Menyiapkan WhatsApp...</span>
                       </>
+                    ) : cooldownSec > 0 ? (
+                      <span>Tunggu {cooldownSec} dtk untuk kirim ulang...</span>
                     ) : (
                       <>
                         <MessageCircle className="w-5 h-5" />

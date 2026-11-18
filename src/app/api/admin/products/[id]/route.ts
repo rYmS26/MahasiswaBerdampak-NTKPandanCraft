@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthenticatedAdmin } from "@/lib/admin-auth";
+import { formatStockLabelWithCount } from "@/lib/format";
+import { sanitizePlainText, sanitizeSlug } from "@/lib/security";
 import { createAdminSupabaseClient } from "@/lib/supabase/admin";
 
 interface RouteParams {
@@ -30,29 +32,59 @@ export async function PUT(request: Request, { params }: RouteParams) {
     const body = await request.json();
     const updateData: Record<string, unknown> = {};
 
-    if (body.name !== undefined) updateData.name = String(body.name).trim();
-    if (body.slug !== undefined) updateData.slug = String(body.slug).trim().toLowerCase();
+    if (body.name !== undefined) updateData.name = sanitizePlainText(body.name, 120);
+    if (body.slug !== undefined) updateData.slug = sanitizeSlug(body.slug, 120);
     if (body.price !== undefined) updateData.price = Math.max(0, parseInt(body.price, 10) || 0);
-    if (body.image_path !== undefined) updateData.image_path = String(body.image_path).trim();
-    if (body.dimensions !== undefined) updateData.dimensions = String(body.dimensions).trim();
-    if (body.badge !== undefined) updateData.badge = String(body.badge).trim();
-    if (body.stock_label !== undefined) updateData.stock_label = String(body.stock_label).trim();
-    if (body.rating !== undefined) updateData.rating = parseFloat(body.rating) || 5.0;
-    if (body.reviews_count !== undefined) updateData.reviews_count = parseInt(body.reviews_count, 10) || 0;
-    if (body.category_label !== undefined) updateData.category_label = String(body.category_label).trim();
-    if (body.description !== undefined) updateData.description = String(body.description).trim();
+    if (body.image_path !== undefined) updateData.image_path = sanitizePlainText(body.image_path, 400);
+    if (body.dimensions !== undefined) updateData.dimensions = sanitizePlainText(body.dimensions, 150);
+    if (body.badge !== undefined) updateData.badge = sanitizePlainText(body.badge, 60);
+    if (body.stock_label !== undefined) updateData.stock_label = sanitizePlainText(body.stock_label, 60);
+    if (body.stock !== undefined) {
+      const safeStock = Math.max(0, parseInt(String(body.stock), 10) || 0);
+      updateData.stock = safeStock;
+      updateData.stock_label = formatStockLabelWithCount(
+        safeStock,
+        typeof body.stock_label === "string" ? body.stock_label : "Tersedia",
+      );
+    }
+    if (body.rating !== undefined) updateData.rating = Math.min(5, Math.max(1, parseFloat(body.rating) || 5.0));
+    if (body.reviews_count !== undefined) updateData.reviews_count = Math.max(0, parseInt(body.reviews_count, 10) || 0);
+    if (body.category_label !== undefined) updateData.category_label = sanitizePlainText(body.category_label, 80);
+    if (body.description !== undefined) updateData.description = sanitizePlainText(body.description, 1000);
     if (body.is_bundle !== undefined) updateData.is_bundle = Boolean(body.is_bundle);
     if (body.is_active !== undefined) updateData.is_active = Boolean(body.is_active);
-    if (body.sort_order !== undefined) updateData.sort_order = parseInt(body.sort_order, 10) || 0;
-    if (Array.isArray(body.variants)) updateData.variants = body.variants;
-    if (Array.isArray(body.categories)) updateData.categories = body.categories;
+    if (body.sort_order !== undefined) updateData.sort_order = Math.max(1, parseInt(body.sort_order, 10) || 1);
+    if (Array.isArray(body.variants)) {
+      updateData.variants = body.variants
+        .map((v: unknown) => sanitizePlainText(v, 150))
+        .filter(Boolean);
+    }
+    if (Array.isArray(body.categories)) {
+      updateData.categories = body.categories
+        .map((c: unknown) => sanitizeSlug(c, 50))
+        .filter(Boolean);
+    }
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from("products")
       .update(updateData)
       .eq("id", productId)
       .select()
       .single();
+
+    // Fallback jika kolom `stock` belum ditambahkan di tabel products
+    if (error && error.message?.toLowerCase().includes("stock") && "stock" in updateData) {
+      const fallbackData = { ...updateData };
+      delete fallbackData.stock;
+      const retry = await supabase
+        .from("products")
+        .update(fallbackData)
+        .eq("id", productId)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ ok: false, error: error.message }, { status: 400 });

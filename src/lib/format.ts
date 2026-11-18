@@ -14,8 +14,10 @@ export const SELLER_WHATSAPP = (
 export function parseProductVariants(
   rawVariants: unknown,
   fallbackPrice: number,
+  fallbackStock = 20,
 ): ProductVariantOption[] {
   const basePrice = Math.max(0, Number(fallbackPrice) || 0);
+  const defaultStock = Math.max(0, Math.floor(Number(fallbackStock) || 0));
   if (!Array.isArray(rawVariants)) return [];
 
   const result: ProductVariantOption[] = [];
@@ -23,27 +25,41 @@ export function parseProductVariants(
     if (typeof item === "string") {
       const trimmed = item.trim();
       if (!trimmed) continue;
-      const sepIdx = trimmed.lastIndexOf("::");
-      if (sepIdx > 0) {
-        const label = trimmed.slice(0, sepIdx).trim();
-        const pricePart = Number(trimmed.slice(sepIdx + 2).trim());
+      const parts = trimmed.split("::").map((p) => p.trim());
+      if (parts.length >= 3) {
+        const label = parts.slice(0, parts.length - 2).join(" - ").trim();
+        const pricePart = Number(parts[parts.length - 2]);
+        const stockPart = Number(parts[parts.length - 1]);
         if (label) {
           result.push({
             label,
             price: Number.isFinite(pricePart) && pricePart > 0 ? Math.round(pricePart) : basePrice,
+            stock: Number.isFinite(stockPart) && stockPart >= 0 ? Math.floor(stockPart) : defaultStock,
+          });
+        }
+      } else if (parts.length === 2) {
+        const [label, priceRaw] = parts;
+        const pricePart = Number(priceRaw);
+        if (label) {
+          result.push({
+            label,
+            price: Number.isFinite(pricePart) && pricePart > 0 ? Math.round(pricePart) : basePrice,
+            stock: defaultStock,
           });
         }
       } else {
-        result.push({ label: trimmed, price: basePrice });
+        result.push({ label: trimmed, price: basePrice, stock: defaultStock });
       }
     } else if (item && typeof item === "object" && "label" in item) {
-      const obj = item as { label?: unknown; price?: unknown };
+      const obj = item as { label?: unknown; price?: unknown; stock?: unknown };
       const label = String(obj.label || "").trim();
       const priceNum = Number(obj.price);
+      const stockNum = Number(obj.stock);
       if (label) {
         result.push({
           label,
           price: Number.isFinite(priceNum) && priceNum > 0 ? Math.round(priceNum) : basePrice,
+          stock: Number.isFinite(stockNum) && stockNum >= 0 ? Math.floor(stockNum) : defaultStock,
         });
       }
     }
@@ -58,9 +74,70 @@ export function serializeProductVariants(options: ProductVariantOption[]): strin
       const cleanLabel = String(opt.label || "").replace(/::/g, "-").trim();
       const cleanPrice = Math.max(0, Math.round(Number(opt.price) || 0));
       if (!cleanLabel) return "";
+      if (opt.stock !== undefined && Number.isFinite(Number(opt.stock))) {
+        const cleanStock = Math.max(0, Math.floor(Number(opt.stock)));
+        return `${cleanLabel}::${cleanPrice}::${cleanStock}`;
+      }
       return `${cleanLabel}::${cleanPrice}`;
     })
     .filter(Boolean);
+}
+
+export function parseProductStock(
+  rawStock: unknown,
+  stockLabel?: string,
+  variantOptions?: ProductVariantOption[],
+): number {
+  if (rawStock !== undefined && rawStock !== null && rawStock !== "") {
+    const num = Number(rawStock);
+    if (Number.isFinite(num)) {
+      return Math.max(0, Math.floor(num));
+    }
+  }
+
+  const label = String(stockLabel || "").trim();
+  const lower = label.toLowerCase();
+  if (lower === "habis" || lower.includes("stok habis") || lower.includes("sold out") || lower.includes("stok kosong")) {
+    return 0;
+  }
+
+  const match = label.match(/(?:stok|tersisa|sisa)\s*:?\s*(\d+)/i);
+  if (match && match[1]) {
+    const parsed = parseInt(match[1], 10);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  if (Array.isArray(variantOptions) && variantOptions.length > 0) {
+    const hasExplicitStock = variantOptions.some((v) => v.stock !== undefined);
+    if (hasExplicitStock) {
+      return variantOptions.reduce((sum, v) => sum + Math.max(0, v.stock ?? 0), 0);
+    }
+  }
+
+  return 20;
+}
+
+export function formatStockLabelWithCount(stock: number, rawLabel?: string): string {
+  const safeStock = Math.max(0, Math.floor(Number(stock) || 0));
+  if (safeStock <= 0) {
+    return "Habis";
+  }
+
+  let base = String(rawLabel || "Tersedia")
+    .replace(/\s*\(?\b(?:stok|sisa)\s*:?\s*\d+\s*(?:pcs)?\)?/gi, "")
+    .trim();
+
+  if (!base || base.toLowerCase() === "habis" || /^tersisa\s+\d+$/i.test(base)) {
+    base = safeStock <= 5 ? `Tersisa ${safeStock}` : "Tersedia";
+  }
+
+  if (/^tersisa\s+\d+$/i.test(base)) {
+    return `Tersisa ${safeStock}`;
+  }
+
+  return `${base} (Stok: ${safeStock})`;
 }
 
 export function getProductUnitPrice(product: ProductItem, variantLabel?: string): number {
@@ -70,7 +147,7 @@ export function getProductUnitPrice(product: ProductItem, variantLabel?: string)
   const options =
     product.variantPrices && product.variantPrices.length > 0
       ? product.variantPrices
-      : parseProductVariants(product.variants, product.price);
+      : parseProductVariants(product.variants, product.price, product.stock);
 
   const matched = options.find(
     (opt) => opt.label.toLowerCase() === cleanVariant.toLowerCase(),
@@ -79,6 +156,31 @@ export function getProductUnitPrice(product: ProductItem, variantLabel?: string)
     return matched.price;
   }
   return product.price;
+}
+
+export function getProductAvailableStock(product: ProductItem, variantLabel?: string): number {
+  const productStock = Math.max(0, Math.floor(Number(product.stock ?? 0)));
+  if (productStock <= 0) return 0;
+
+  const cleanVariant = (variantLabel || "").trim();
+  if (!cleanVariant) return productStock;
+
+  const options =
+    product.variantPrices && product.variantPrices.length > 0
+      ? product.variantPrices
+      : parseProductVariants(product.variants, product.price, productStock);
+
+  const matched = options.find(
+    (opt) => opt.label.toLowerCase() === cleanVariant.toLowerCase(),
+  );
+  if (matched && matched.stock !== undefined && Number.isFinite(matched.stock)) {
+    return Math.max(0, Math.floor(matched.stock));
+  }
+  return productStock;
+}
+
+export function isProductOutOfStock(product: ProductItem, variantLabel?: string): boolean {
+  return getProductAvailableStock(product, variantLabel) <= 0;
 }
 
 export function normalizeWhatsAppNumber(input: string): string {

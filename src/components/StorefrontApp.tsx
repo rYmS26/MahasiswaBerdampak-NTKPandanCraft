@@ -19,7 +19,7 @@ import { HeroSection } from "@/components/HeroSection";
 import { Navbar } from "@/components/Navbar";
 import { TestimonialsAndFaq } from "@/components/TestimonialsAndFaq";
 import { StoreSettingsProvider } from "@/components/StoreSettingsContext";
-import { getProductUnitPrice } from "@/lib/format";
+import { getProductAvailableStock, getProductUnitPrice } from "@/lib/format";
 import type {
   CartItem,
   CategoryItem,
@@ -229,21 +229,55 @@ export function StorefrontApp({
       note: string,
       openCartAfter: boolean,
     ) => {
+      const availableStock = getProductAvailableStock(product, variant);
+      if (availableStock <= 0) {
+        showToast(`Maaf, stok untuk ${product.name} sedang habis.`);
+        return;
+      }
+
       const targetKey = getCartKey(product.slug, variant, note);
+      let capped = false;
+
       setCart((prev) => {
+        const currentVariantQty = prev
+          .filter(
+            (c) =>
+              c.slug === product.slug &&
+              (c.variant || "").toLowerCase() === (variant || "").toLowerCase(),
+          )
+          .reduce((sum, c) => sum + c.qty, 0);
+
+        const remainingAllowed = Math.max(0, availableStock - currentVariantQty);
+        if (remainingAllowed <= 0) {
+          capped = true;
+          return prev;
+        }
+
+        const addQty = Math.min(qty, remainingAllowed);
+        if (addQty < qty) {
+          capped = true;
+        }
+
         const idx = prev.findIndex(
           (c) => getCartKey(c.slug, c.variant, c.note) === targetKey,
         );
         if (idx !== -1) {
           const updated = [...prev];
-          updated[idx] = { ...updated[idx], qty: updated[idx].qty + qty };
+          updated[idx] = { ...updated[idx], qty: updated[idx].qty + addQty };
           return updated;
         }
-        return [...prev, { slug: product.slug, qty, variant, note }];
+        return [...prev, { slug: product.slug, qty: addQty, variant, note }];
       });
 
       const variantSuffix = variant ? ` (${variant})` : "";
-      showToast(`${product.name}${variantSuffix} ditambahkan ke keranjang`);
+      if (capped) {
+        showToast(
+          `Maksimal pembelian ${product.name}${variantSuffix} adalah ${availableStock} pcs (sesuai sisa stok)`,
+        );
+      } else {
+        showToast(`${product.name}${variantSuffix} ditambahkan ke keranjang`);
+      }
+
       setSelectedProduct(null);
       if (openCartAfter) {
         setCartOpen(true);
@@ -254,56 +288,82 @@ export function StorefrontApp({
 
   const handleQuickAdd = useCallback(
     (product: ProductItem) => {
-      const defaultVariant =
-        product.variants.length > 0 ? product.variants[0] : "";
-      handleAddToCart(product, 1, defaultVariant, "", false);
+      const firstInStockVariant =
+        product.variantPrices?.find((vp) => (vp.stock ?? product.stock) > 0)?.label ||
+        (product.variants.length > 0 ? product.variants[0] : "");
+      handleAddToCart(product, 1, firstInStockVariant, "", false);
     },
     [handleAddToCart],
   );
 
-  const handleUpdateQty = useCallback((index: number, delta: number) => {
-    setCart((prev) => {
-      const target = prev[index];
-      if (!target) return prev;
-      const nextQty = target.qty + delta;
-      if (nextQty <= 0) {
-        return prev.filter((_, i) => i !== index);
-      }
-      return prev.map((item, i) =>
-        i === index ? { ...item, qty: nextQty } : item,
-      );
-    });
-  }, []);
+  const handleUpdateQty = useCallback(
+    (index: number, delta: number) => {
+      setCart((prev) => {
+        const target = prev[index];
+        if (!target) return prev;
+        const product = productMap.get(target.slug);
+        const maxStock = product
+          ? getProductAvailableStock(product, target.variant)
+          : 999;
 
-  const handleUpdateVariant = useCallback((index: number, newVariant: string) => {
-    setCart((prev) => {
-      const current = prev[index];
-      if (!current) return prev;
+        const nextQty = target.qty + delta;
+        if (nextQty <= 0) {
+          return prev.filter((_, i) => i !== index);
+        }
+        if (delta > 0 && nextQty > maxStock) {
+          showToast(`Maksimal pembelian sesuai sisa stok (${maxStock} pcs)`);
+          return prev.map((item, i) =>
+            i === index ? { ...item, qty: Math.max(1, maxStock) } : item,
+          );
+        }
+        return prev.map((item, i) =>
+          i === index ? { ...item, qty: nextQty } : item,
+        );
+      });
+    },
+    [productMap, showToast],
+  );
 
-      const updatedItem = { ...current, variant: newVariant };
-      const targetKey = getCartKey(
-        updatedItem.slug,
-        updatedItem.variant,
-        updatedItem.note,
-      );
-      const dupIdx = prev.findIndex(
-        (c, i) =>
-          i !== index && getCartKey(c.slug, c.variant, c.note) === targetKey,
-      );
+  const handleUpdateVariant = useCallback(
+    (index: number, newVariant: string) => {
+      setCart((prev) => {
+        const current = prev[index];
+        if (!current) return prev;
+        const product = productMap.get(current.slug);
+        const maxStock = product
+          ? getProductAvailableStock(product, newVariant)
+          : 999;
 
-      if (dupIdx !== -1) {
-        return prev
-          .map((item, i) =>
-            i === dupIdx
-              ? { ...item, qty: item.qty + updatedItem.qty }
-              : item,
-          )
-          .filter((_, i) => i !== index);
-      }
+        const clampedQty = Math.min(current.qty, Math.max(1, maxStock));
+        const updatedItem = { ...current, variant: newVariant, qty: clampedQty };
+        const targetKey = getCartKey(
+          updatedItem.slug,
+          updatedItem.variant,
+          updatedItem.note,
+        );
+        const dupIdx = prev.findIndex(
+          (c, i) =>
+            i !== index && getCartKey(c.slug, c.variant, c.note) === targetKey,
+        );
 
-      return prev.map((item, i) => (i === index ? updatedItem : item));
-    });
-  }, []);
+        if (dupIdx !== -1) {
+          return prev
+            .map((item, i) =>
+              i === dupIdx
+                ? {
+                    ...item,
+                    qty: Math.min(maxStock, item.qty + updatedItem.qty),
+                  }
+                : item,
+            )
+            .filter((_, i) => i !== index);
+        }
+
+        return prev.map((item, i) => (i === index ? updatedItem : item));
+      });
+    },
+    [productMap],
+  );
 
   const handleRemoveItem = useCallback((index: number) => {
     setCart((prev) => prev.filter((_, i) => i !== index));
@@ -417,6 +477,7 @@ export function StorefrontApp({
       {selectedProduct ? (
         <ProductDetailModal
           product={selectedProduct}
+          cart={cart}
           onClose={() => setSelectedProduct(null)}
           onAdd={handleAddToCart}
         />

@@ -13,13 +13,15 @@ import {
 } from "lucide-react";
 import {
   formatRupiah,
+  getProductAvailableStock,
   getProductUnitPrice,
   parseProductVariants,
 } from "@/lib/format";
-import type { ProductItem } from "@/types/catalog";
+import type { CartItem, ProductItem } from "@/types/catalog";
 
 interface ProductDetailModalProps {
   product: ProductItem;
+  cart?: CartItem[];
   onClose: () => void;
   onAdd: (
     product: ProductItem,
@@ -32,26 +34,42 @@ interface ProductDetailModalProps {
 
 export function ProductDetailModal({
   product,
+  cart = [],
   onClose,
   onAdd,
 }: ProductDetailModalProps) {
   const variantOptions =
     product.variantPrices && product.variantPrices.length > 0
       ? product.variantPrices
-      : parseProductVariants(product.variants, product.price);
+      : parseProductVariants(product.variants, product.price, product.stock);
 
+  const firstAvailableVariant =
+    variantOptions.find((v) => (v.stock ?? product.stock) > 0)?.label ||
+    variantOptions[0]?.label ||
+    product.variants[0] ||
+    "";
+
+  const [variant, setVariant] = useState(firstAvailableVariant);
   const [qty, setQty] = useState(1);
-  const [variant, setVariant] = useState(
-    variantOptions.length > 0
-      ? variantOptions[0].label
-      : product.variants.length > 0
-      ? product.variants[0]
-      : "",
-  );
   const [note, setNote] = useState("");
 
+  const availableStock = getProductAvailableStock(product, variant);
+  const alreadyInCartQty = cart
+    .filter(
+      (c) =>
+        c.slug === product.slug &&
+        (c.variant || "").toLowerCase() === (variant || "").toLowerCase(),
+    )
+    .reduce((sum, c) => sum + c.qty, 0);
+
+  const maxAddableQty = Math.max(0, availableStock - alreadyInCartQty);
+  const effectiveMaxQty = maxAddableQty > 0 ? maxAddableQty : Math.max(1, availableStock);
+  const isOutOfStock = availableStock <= 0;
+  const isCartMaxed = !isOutOfStock && maxAddableQty <= 0;
+
+  const safeQty = Math.min(Math.max(1, qty), effectiveMaxQty);
   const unitPrice = getProductUnitPrice(product, variant);
-  const subtotal = unitPrice * qty;
+  const subtotal = unitPrice * safeQty;
   const hasMultiplePrices =
     variantOptions.length > 1 &&
     new Set(variantOptions.map((o) => o.price)).size > 1;
@@ -77,11 +95,23 @@ export function ProductDetailModal({
                 sizes="(max-width: 768px) 100vw, 400px"
                 className="object-cover"
               />
-              <span className="absolute top-3 left-3 px-3 py-1 rounded-full bg-forest text-white text-[11px] font-semibold uppercase tracking-wider">
-                {product.badge}
+              <span
+                className={`absolute top-3 left-3 px-3 py-1 rounded-full text-white text-[11px] font-semibold uppercase tracking-wider ${
+                  isOutOfStock ? "bg-red-600" : "bg-forest"
+                }`}
+              >
+                {isOutOfStock ? "Stok Habis" : product.badge}
               </span>
-              <span className="absolute top-3 right-3 px-2.5 py-1 rounded-full bg-white/95 text-olive text-[11px] font-semibold border border-stone-200">
-                {product.stockLabel}
+              <span
+                className={`absolute top-3 right-3 px-2.5 py-1 rounded-full bg-white/95 text-[11px] font-semibold border ${
+                  isOutOfStock
+                    ? "text-red-600 border-red-200"
+                    : "text-olive border-stone-200"
+                }`}
+              >
+                {isOutOfStock
+                  ? "Sold Out (0 pcs)"
+                  : `Sisa Stok: ${availableStock} pcs`}
               </span>
             </div>
 
@@ -157,14 +187,21 @@ export function ProductDetailModal({
                   <div className="flex flex-wrap gap-2">
                     {variantOptions.map((opt) => {
                       const active = variant === opt.label;
+                      const optStock = opt.stock !== undefined ? opt.stock : product.stock;
+                      const optSoldOut = optStock <= 0;
                       return (
                         <button
                           key={opt.label}
                           type="button"
-                          onClick={() => setVariant(opt.label)}
+                          onClick={() => {
+                            setVariant(opt.label);
+                            setQty(1);
+                          }}
                           className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
                             active
                               ? "bg-olive text-white border-olive shadow-sm ring-2 ring-olive/25"
+                              : optSoldOut
+                              ? "bg-stone-100 text-stone-400 border-stone-200 line-through"
                               : "bg-cream-soft text-forest border-stone-200 hover:border-olive"
                           }`}
                         >
@@ -180,6 +217,17 @@ export function ProductDetailModal({
                               {formatRupiah(opt.price)}
                             </span>
                           ) : null}
+                          <span
+                            className={`text-[10px] ${
+                              active
+                                ? "text-white/90"
+                                : optSoldOut
+                                ? "text-red-500 font-bold"
+                                : "text-stone-500"
+                            }`}
+                          >
+                            ({optSoldOut ? "Habis" : `Stok ${optStock}`})
+                          </span>
                         </button>
                       );
                     })}
@@ -207,37 +255,61 @@ export function ProductDetailModal({
 
             <div className="pt-4 border-t border-stone-200 flex flex-col gap-3">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">
-                    Jumlah:
-                  </span>
-                  <div className="inline-flex items-center rounded-full border border-stone-200 bg-cream-soft">
-                    <button
-                      type="button"
-                      onClick={() => setQty((q) => Math.max(1, q - 1))}
-                      className="w-9 h-9 flex items-center justify-center text-forest hover:bg-stone-200/70 rounded-l-full"
-                      aria-label="Kurangi jumlah"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
-                    <span className="w-9 text-center text-sm font-bold tabular-nums text-forest">
-                      {qty}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">
+                      Jumlah:
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setQty((q) => q + 1)}
-                      className="w-9 h-9 flex items-center justify-center text-forest hover:bg-stone-200/70 rounded-r-full"
-                      aria-label="Tambah jumlah"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                    <div className="inline-flex items-center rounded-full border border-stone-200 bg-cream-soft">
+                      <button
+                        type="button"
+                        disabled={isOutOfStock || safeQty <= 1}
+                        onClick={() => setQty((q) => Math.max(1, Math.min(effectiveMaxQty, q) - 1))}
+                        className="w-9 h-9 flex items-center justify-center text-forest hover:bg-stone-200/70 disabled:opacity-40 disabled:cursor-not-allowed rounded-l-full"
+                        aria-label="Kurangi jumlah"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        disabled={isOutOfStock || isCartMaxed}
+                        value={isOutOfStock ? 0 : safeQty}
+                        onChange={(e) => {
+                          const raw = parseInt(e.target.value.replace(/\D/g, ""), 10);
+                          if (isNaN(raw) || raw < 1) {
+                            setQty(1);
+                          } else {
+                            setQty(Math.min(effectiveMaxQty, raw));
+                          }
+                        }}
+                        aria-label="Jumlah beli"
+                        className="w-11 text-center text-sm font-bold tabular-nums text-forest bg-transparent focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={isOutOfStock || isCartMaxed || safeQty >= effectiveMaxQty}
+                        onClick={() => setQty((q) => Math.min(effectiveMaxQty, q + 1))}
+                        className="w-9 h-9 flex items-center justify-center text-forest hover:bg-stone-200/70 disabled:opacity-40 disabled:cursor-not-allowed rounded-r-full"
+                        aria-label="Tambah jumlah"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                  <span className="text-[11px] text-stone-500">
+                    {isOutOfStock
+                      ? "Stok produk ini sedang habis"
+                      : isCartMaxed
+                      ? `Seluruh stok (${availableStock} pcs) sudah ada di keranjang Anda`
+                      : `Maks. beli: ${maxAddableQty} pcs (Sisa stok: ${availableStock} pcs)`}
+                  </span>
                 </div>
 
                 <div className="text-right">
                   <span className="block text-[11px] text-stone-500">Subtotal</span>
                   <span className="text-base font-bold text-olive tabular-nums">
-                    {formatRupiah(subtotal)}
+                    {formatRupiah(isOutOfStock ? 0 : subtotal)}
                   </span>
                 </div>
               </div>
@@ -245,19 +317,37 @@ export function ProductDetailModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <button
                   type="button"
-                  onClick={() => onAdd(product, qty, variant, note.trim(), false)}
-                  className="inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-olive hover:bg-olive-dark text-white text-sm font-semibold shadow-sm transition-colors"
+                  disabled={isOutOfStock || isCartMaxed}
+                  onClick={() => onAdd(product, safeQty, variant, note.trim(), false)}
+                  className={`inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-sm font-semibold shadow-sm transition-colors ${
+                    isOutOfStock || isCartMaxed
+                      ? "bg-stone-200 text-stone-500 cursor-not-allowed"
+                      : "bg-olive hover:bg-olive-dark text-white"
+                  }`}
                 >
                   <ShoppingCart className="w-4 h-4" />
-                  <span>Tambah ke Keranjang</span>
+                  <span>
+                    {isOutOfStock
+                      ? "Stok Habis (Sold Out)"
+                      : isCartMaxed
+                      ? "Batas Stok Tercapai"
+                      : "Tambah ke Keranjang"}
+                  </span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => onAdd(product, qty, variant, note.trim(), true)}
-                  className="inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl border border-olive text-olive hover:bg-olive-light text-sm font-semibold transition-colors"
+                  disabled={isOutOfStock || isCartMaxed}
+                  onClick={() => onAdd(product, safeQty, variant, note.trim(), true)}
+                  className={`inline-flex items-center justify-center gap-2 py-3 px-4 rounded-xl border text-sm font-semibold transition-colors ${
+                    isOutOfStock || isCartMaxed
+                      ? "border-stone-200 bg-stone-100 text-stone-400 cursor-not-allowed"
+                      : "border-olive text-olive hover:bg-olive-light"
+                  }`}
                 >
                   <ShoppingBag className="w-4 h-4" />
-                  <span>Beli &amp; Buka Keranjang</span>
+                  <span>
+                    {isOutOfStock ? "Tidak Dapat Dipesan" : "Beli & Buka Keranjang"}
+                  </span>
                 </button>
               </div>
             </div>

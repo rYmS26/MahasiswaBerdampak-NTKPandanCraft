@@ -149,11 +149,19 @@ export function CatalogSection({
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-1">
           {visibleProducts.map((product) => {
             const qtyInCart = cartQtyBySlug.get(product.slug) ?? 0;
+            const availableStock = Math.max(0, product.stock ?? 0);
+            const isSoldOut = availableStock <= 0;
+            const reachedStockLimit = !isSoldOut && qtyInCart >= availableStock;
+
             return (
               <article
                 key={product.slug}
                 onClick={() => onOpenProduct(product)}
-                className="group cursor-pointer rounded-2xl border border-stone-200/80 bg-white p-3.5 flex flex-col justify-between shadow-[0_4px_20px_-8px_rgba(20,38,28,0.08)] hover:shadow-[0_12px_28px_-10px_rgba(20,38,28,0.16)] hover:border-olive/40 transition-all"
+                className={`group cursor-pointer rounded-2xl border bg-white p-3.5 flex flex-col justify-between shadow-[0_4px_20px_-8px_rgba(20,38,28,0.08)] hover:shadow-[0_12px_28px_-10px_rgba(20,38,28,0.16)] transition-all ${
+                  isSoldOut
+                    ? "border-stone-200 opacity-85"
+                    : "border-stone-200/80 hover:border-olive/40"
+                }`}
               >
                 <div>
                   <div className="relative aspect-[4/3] sm:aspect-square rounded-xl overflow-hidden bg-cream-soft mb-3">
@@ -162,10 +170,16 @@ export function CatalogSection({
                       alt={product.name}
                       fill
                       sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      className={`object-cover transition-transform duration-500 ${
+                        isSoldOut ? "grayscale-[35%]" : "group-hover:scale-105"
+                      }`}
                     />
-                    <span className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-forest/90 text-white text-[10px] font-semibold uppercase tracking-wider">
-                      {product.badge}
+                    <span
+                      className={`absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full text-white text-[10px] font-semibold uppercase tracking-wider ${
+                        isSoldOut ? "bg-red-600" : "bg-forest/90"
+                      }`}
+                    >
+                      {isSoldOut ? "Stok Habis" : product.badge}
                     </span>
                     <span
                       className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-white/90 text-forest flex items-center justify-center opacity-90 group-hover:opacity-100 shadow-sm"
@@ -186,8 +200,20 @@ export function CatalogSection({
                         <strong className="text-forest">{product.rating}</strong>
                         <span>({product.reviewsCount})</span>
                       </span>
-                      <span className="text-[11px] font-semibold text-olive">
-                        {product.stockLabel}
+                      <span
+                        className={`text-[11px] font-semibold ${
+                          isSoldOut
+                            ? "text-red-600"
+                            : availableStock <= 5
+                            ? "text-amber-600"
+                            : "text-olive"
+                        }`}
+                      >
+                        {isSoldOut
+                          ? "Stok Habis (Sold Out)"
+                          : availableStock <= 5
+                          ? `Tersisa ${availableStock} pcs`
+                          : `Stok: ${availableStock} pcs`}
                       </span>
                     </div>
 
@@ -240,14 +266,29 @@ export function CatalogSection({
 
                   <button
                     type="button"
+                    disabled={isSoldOut || reachedStockLimit}
                     onClick={(e) => {
                       e.stopPropagation();
-                      onQuickAdd(product);
+                      if (!isSoldOut && !reachedStockLimit) {
+                        onQuickAdd(product);
+                      }
                     }}
-                    className="w-full inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-olive hover:bg-olive-dark text-white text-xs sm:text-sm font-semibold shadow-sm transition-colors"
+                    className={`w-full inline-flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold shadow-sm transition-colors ${
+                      isSoldOut
+                        ? "bg-stone-200 text-stone-500 cursor-not-allowed"
+                        : reachedStockLimit
+                        ? "bg-amber-100 text-amber-800 border border-amber-200 cursor-not-allowed"
+                        : "bg-olive hover:bg-olive-dark text-white"
+                    }`}
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    <span>Tambah ke Keranjang</span>
+                    <span>
+                      {isSoldOut
+                        ? "Stok Habis (Sold Out)"
+                        : reachedStockLimit
+                        ? `Maks. Stok (${availableStock} pcs)`
+                        : "Tambah ke Keranjang"}
+                    </span>
                   </button>
                 </div>
               </article>

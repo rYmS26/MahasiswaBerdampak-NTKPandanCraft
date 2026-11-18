@@ -37,6 +37,7 @@ import {
   DEFAULT_HERO_IMAGE,
   formatRupiah,
   formatWhatsAppDisplay,
+  parseProductStock,
   parseProductVariants,
   serializeProductVariants,
 } from "@/lib/format";
@@ -53,6 +54,7 @@ interface DbProductRaw {
   slug: string;
   name: string;
   price: number;
+  stock?: number | null;
   image_path: string;
   dimensions: string;
   variants?: string[] | null;
@@ -104,8 +106,9 @@ export function AdminDashboardClient() {
     name: string;
     slug: string;
     price: string;
+    stock: string;
     dimensions: string;
-    variant_options: { label: string; price: string }[];
+    variant_options: { label: string; price: string; stock: string }[];
     badge: string;
     stock_label: string;
     rating: number;
@@ -122,6 +125,7 @@ export function AdminDashboardClient() {
     name: "",
     slug: "",
     price: "50000",
+    stock: "20",
     dimensions: "",
     variant_options: [],
     badge: "Terlaris",
@@ -202,18 +206,21 @@ export function AdminDashboardClient() {
         // Map raw DB rows to ProductItem format
         const mapped: ProductItem[] = (data.products || []).map((p: DbProductRaw) => {
           const basePrice = Number(p.price);
-          const parsedVariants = parseProductVariants(p.variants, basePrice);
+          const initialStock = parseProductStock(p.stock, p.stock_label);
+          const parsedVariants = parseProductVariants(p.variants, basePrice, initialStock);
+          const resolvedStock = parseProductStock(p.stock, p.stock_label, parsedVariants);
           return {
             id: p.id,
             slug: p.slug,
             name: p.name,
             price: basePrice,
+            stock: resolvedStock,
             imagePath: p.image_path,
             dimensions: p.dimensions,
             variants: parsedVariants.map((v) => v.label),
             variantPrices: parsedVariants,
             badge: p.badge,
-            stockLabel: p.stock_label,
+            stockLabel: resolvedStock <= 0 ? "Habis" : p.stock_label,
             rating: Number(p.rating).toFixed(1),
             reviewsCount: p.reviews_count,
             categories: p.categories || [],
@@ -402,6 +409,7 @@ export function AdminDashboardClient() {
       name: "",
       slug: "",
       price: "50000",
+      stock: "20",
       dimensions: "P: 25cm | L: 15cm | T: 10cm",
       variant_options: [],
       badge: "Produk Pilihan",
@@ -436,15 +444,17 @@ export function AdminDashboardClient() {
     const parsedVariants =
       p.variantPrices && p.variantPrices.length > 0
         ? p.variantPrices
-        : parseProductVariants(p.variants, p.price);
+        : parseProductVariants(p.variants, p.price, p.stock);
     setProductFormData({
       name: p.name,
       slug: p.slug,
       price: String(p.price),
+      stock: String(p.stock ?? 20),
       dimensions: p.dimensions,
       variant_options: parsedVariants.map((v) => ({
         label: v.label,
         price: String(v.price),
+        stock: String(v.stock ?? p.stock ?? 10),
       })),
       badge: p.badge,
       stock_label: p.stockLabel,
@@ -546,6 +556,7 @@ export function AdminDashboardClient() {
       .map((v) => ({
         label: v.label.trim(),
         price: Math.max(0, parseInt(String(v.price).replace(/\D/g, ""), 10) || 0),
+        stock: Math.max(0, parseInt(String(v.stock).replace(/\D/g, ""), 10) || 0),
       }))
       .filter((v) => v.label.length > 0 && v.price > 0);
 
@@ -562,6 +573,11 @@ export function AdminDashboardClient() {
       return;
     }
 
+    const numericStock =
+      validVariants.length > 0
+        ? validVariants.reduce((sum, v) => sum + v.stock, 0)
+        : Math.max(0, parseInt(String(productFormData.stock).replace(/\D/g, ""), 10) || 0);
+
     setSavingProduct(true);
 
     const chosenImagePath =
@@ -571,10 +587,16 @@ export function AdminDashboardClient() {
       name: productFormData.name.trim(),
       slug: productFormData.slug.trim(),
       price: numericPrice,
+      stock: numericStock,
       dimensions: productFormData.dimensions.trim(),
       variants: serializeProductVariants(validVariants),
       badge: productFormData.badge.trim(),
-      stock_label: productFormData.stock_label.trim(),
+      stock_label:
+        numericStock <= 0
+          ? "Habis"
+          : productFormData.stock_label.trim() === "Habis"
+          ? "Tersedia"
+          : productFormData.stock_label.trim(),
       rating: productFormData.rating,
       reviews_count: productFormData.reviews_count,
       category_label: productFormData.category_label.trim(),
@@ -686,6 +708,7 @@ export function AdminDashboardClient() {
 
       showToast(`Pesanan berhasil diubah menjadi: ${statusLabels[newStatus]}`);
       fetchOrders(orderStatusFilter);
+      fetchProducts(); // Refresh product stocks after confirmation/cancellation
       fetchReports(reportPeriod); // Keep sales reports synced
       if (selectedOrderForDetail?.id === orderId) {
         setSelectedOrderForDetail(data.order);
@@ -1222,7 +1245,7 @@ export function AdminDashboardClient() {
                                     key={vp.label}
                                     className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-600 border border-stone-200/80"
                                   >
-                                    {vp.label}: {formatRupiah(vp.price)}
+                                    {vp.label}: {formatRupiah(vp.price)} (Stok: {vp.stock ?? p.stock})
                                   </span>
                                 ))}
                               </div>
@@ -1230,17 +1253,22 @@ export function AdminDashboardClient() {
                           </td>
                           <td className="py-3 px-4 text-stone-500 max-w-[160px] truncate">{p.dimensions}</td>
                           <td className="py-3 px-4">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                p.stockLabel === "Tersedia"
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : p.stockLabel.includes("Tersisa")
-                                  ? "bg-amber-100 text-amber-800"
-                                  : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {p.stockLabel}
-                            </span>
+                            <div className="flex flex-col items-start gap-1">
+                              <span
+                                className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                  p.stock <= 0
+                                    ? "bg-red-100 text-red-800 border border-red-200"
+                                    : p.stock <= 5
+                                    ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                    : "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                                }`}
+                              >
+                                {p.stock <= 0 ? "Stok Habis (0 pcs)" : `${p.stock} pcs`}
+                              </span>
+                              <span className="text-[10px] text-stone-500 font-medium">
+                                {p.stockLabel}
+                              </span>
+                            </div>
                           </td>
                           <td className="py-3 px-4">
                             <button
@@ -2264,10 +2292,11 @@ export function AdminDashboardClient() {
                           const base = parseInt(productFormData.price, 10) || 50000;
                           setProductFormData((prev) => ({
                             ...prev,
+                            stock: "30",
                             variant_options: [
-                              { label: "Ukuran S (Kecil)", price: String(base) },
-                              { label: "Ukuran M (Sedang)", price: String(base + 15000) },
-                              { label: "Ukuran L (Besar)", price: String(base + 30000) },
+                              { label: "Ukuran S (Kecil)", price: String(base), stock: "10" },
+                              { label: "Ukuran M (Sedang)", price: String(base + 15000), stock: "10" },
+                              { label: "Ukuran L (Besar)", price: String(base + 30000), stock: "10" },
                             ],
                           }));
                         }}
@@ -2285,6 +2314,7 @@ export function AdminDashboardClient() {
                               {
                                 label: "",
                                 price: prev.price || "50000",
+                                stock: "10",
                               },
                             ],
                           }))
@@ -2299,7 +2329,7 @@ export function AdminDashboardClient() {
 
                   {productFormData.variant_options.length === 0 ? (
                     <div className="text-[11px] text-stone-500 bg-white/80 border border-dashed border-stone-200 rounded-xl px-3 py-2.5 text-center">
-                      Produk ini menggunakan 1 harga tunggal ({productFormData.price ? formatRupiah(parseInt(productFormData.price, 10) || 0) : "Rp0"}). Klik <strong>&quot;+ Tambah Ukuran&quot;</strong> jika ingin membedakan harga per ukuran.
+                      Produk ini menggunakan 1 harga &amp; stok tunggal ({productFormData.price ? formatRupiah(parseInt(productFormData.price, 10) || 0) : "Rp0"} • Stok: {productFormData.stock || "0"} pcs). Klik <strong>&quot;+ Tambah Ukuran&quot;</strong> jika ingin membedakan harga dan stok per ukuran.
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -2308,7 +2338,7 @@ export function AdminDashboardClient() {
                           key={idx}
                           className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center bg-white p-2.5 rounded-xl border border-stone-200 shadow-2xs"
                         >
-                          <div className="sm:col-span-6">
+                          <div className="sm:col-span-5">
                             <label className="block text-[10px] font-bold uppercase text-stone-400 mb-0.5">
                               Nama Ukuran / Variasi #{idx + 1}
                             </label>
@@ -2328,10 +2358,10 @@ export function AdminDashboardClient() {
                             />
                           </div>
 
-                          <div className="sm:col-span-5">
+                          <div className="sm:col-span-4">
                             <div className="flex items-center justify-between mb-0.5">
                               <label className="block text-[10px] font-bold uppercase text-stone-400">
-                                Harga Ukuran Ini (Rp)
+                                Harga Ukuran (Rp)
                               </label>
                               <span className="text-[10px] font-bold text-olive">
                                 {opt.price ? formatRupiah(parseInt(opt.price, 10) || 0) : "Rp0"}
@@ -2348,7 +2378,6 @@ export function AdminDashboardClient() {
                                 setProductFormData((prev) => {
                                   const next = [...prev.variant_options];
                                   next[idx] = { ...next[idx], price: raw };
-                                  // Sync main price to first variant if first row is edited
                                   const nextMainPrice = idx === 0 && raw ? raw : prev.price;
                                   return {
                                     ...prev,
@@ -2359,6 +2388,37 @@ export function AdminDashboardClient() {
                               }}
                               placeholder="Contoh: 65000"
                               className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-bold text-forest focus:outline-none focus:border-forest"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="block text-[10px] font-bold uppercase text-stone-400 mb-0.5">
+                              Stok (Pcs)
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              value={opt.stock}
+                              onChange={(e) => {
+                                const raw = e.target.value.replace(/\D/g, "");
+                                const cleaned = raw.length > 1 ? raw.replace(/^0+/, "") || "0" : raw;
+                                setProductFormData((prev) => {
+                                  const next = [...prev.variant_options];
+                                  next[idx] = { ...next[idx], stock: cleaned };
+                                  const sumStock = next.reduce(
+                                    (acc, item) => acc + Math.max(0, parseInt(item.stock, 10) || 0),
+                                    0
+                                  );
+                                  return {
+                                    ...prev,
+                                    stock: String(sumStock),
+                                    stock_label: sumStock <= 0 ? "Habis" : prev.stock_label === "Habis" ? "Tersedia" : prev.stock_label,
+                                    variant_options: next,
+                                  };
+                                });
+                              }}
+                              placeholder="10"
+                              className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-bold text-stone-800 focus:outline-none focus:border-forest"
                             />
                           </div>
 
@@ -2473,68 +2533,151 @@ export function AdminDashboardClient() {
                   </div>
                 </div>
 
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
-                      Status Stok (Fleksibel)
-                    </label>
-                    <span className="text-[10px] text-stone-400">Bisa ketik bebas atau pilih template</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="flex gap-2">
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
+                        Jumlah Stok Barang (Pcs) *
+                      </label>
+                      <span className="text-[10px] font-semibold text-olive">
+                        {parseInt(productFormData.stock, 10) > 0
+                          ? `Maksimal dibeli: ${parseInt(productFormData.stock, 10)} pcs`
+                          : "Stok Habis (Sold Out)"}
+                      </span>
+                    </div>
+                    <div className="flex gap-2 items-center">
                       <input
                         type="text"
-                        value={productFormData.stock_label}
-                        onChange={(e) =>
-                          setProductFormData((prev) => ({ ...prev, stock_label: e.target.value }))
-                        }
-                        placeholder="Ketik manual (misal: Sisa 2 pcs, Ready Besok, dll)"
-                        className="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest bg-white font-medium"
-                      />
-                      <select
-                        value=""
+                        inputMode="numeric"
+                        value={productFormData.stock}
                         onChange={(e) => {
-                          if (e.target.value) {
-                            setProductFormData((prev) => ({ ...prev, stock_label: e.target.value }));
-                          }
+                          const raw = e.target.value.replace(/\D/g, "");
+                          const cleaned = raw.length > 1 ? raw.replace(/^0+/, "") || "0" : raw;
+                          const num = parseInt(cleaned || "0", 10);
+                          setProductFormData((prev) => ({
+                            ...prev,
+                            stock: cleaned,
+                            stock_label:
+                              num <= 0
+                                ? "Habis"
+                                : prev.stock_label === "Habis"
+                                ? "Tersedia"
+                                : prev.stock_label,
+                          }));
                         }}
-                        className="px-2.5 py-2 rounded-xl border border-stone-300 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 cursor-pointer focus:outline-none focus:border-forest"
-                        title="Pilih Template Status"
-                      >
-                        <option value="">📋 Template...</option>
-                        <option value="Tersedia">Tersedia</option>
-                        <option value="Tersisa 3">Tersisa 3</option>
-                        <option value="Tersisa 5">Tersisa 5</option>
-                        <option value="Pre-Order 2 Hari">Pre-Order 2 Hari</option>
-                        <option value="Pre-Order 5 Hari">Pre-Order 5 Hari</option>
-                        <option value="Habis">Habis</option>
-                        <option value="Edisi Terbatas">Edisi Terbatas</option>
-                      </select>
+                        placeholder="Contoh: 20 (Ketik 0 jika stok habis)"
+                        className="w-36 px-3 py-2 rounded-xl border border-stone-300 text-sm font-bold text-forest focus:outline-none focus:border-forest bg-white"
+                      />
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          { label: "0 (Habis)", val: "0" },
+                          { label: "5 pcs", val: "5" },
+                          { label: "10 pcs", val: "10" },
+                          { label: "25 pcs", val: "25" },
+                          { label: "50 pcs", val: "50" },
+                        ].map((preset) => (
+                          <button
+                            key={preset.val}
+                            type="button"
+                            onClick={() =>
+                              setProductFormData((prev) => ({
+                                ...prev,
+                                stock: preset.val,
+                                stock_label:
+                                  preset.val === "0"
+                                    ? "Habis"
+                                    : prev.stock_label === "Habis"
+                                    ? "Tersedia"
+                                    : prev.stock_label,
+                              }))
+                            }
+                            className={`text-[10px] px-2 py-1 rounded-lg border font-semibold transition-all ${
+                              productFormData.stock === preset.val
+                                ? "bg-forest text-white border-forest"
+                                : "bg-stone-50 text-stone-600 border-stone-200 hover:bg-stone-100"
+                            }`}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  </div>
 
-                    {/* Quick Pill Templates */}
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-[10px] text-stone-400 font-semibold uppercase">Pilihan Cepat:</span>
-                      {[
-                        { label: "Tersedia", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-                        { label: "Tersisa 3", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-                        { label: "Pre-Order 2 Hari", cls: "bg-blue-50 text-blue-700 border-blue-200" },
-                        { label: "Habis", cls: "bg-rose-50 text-rose-700 border-rose-200" },
-                        { label: "Edisi Terbatas", cls: "bg-purple-50 text-purple-700 border-purple-200" },
-                      ].map((item) => (
-                        <button
-                          key={item.label}
-                          type="button"
-                          onClick={() => setProductFormData((prev) => ({ ...prev, stock_label: item.label }))}
-                          className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
-                            productFormData.stock_label === item.label
-                              ? "ring-2 ring-forest font-bold " + item.cls
-                              : "hover:opacity-80 " + item.cls
-                          }`}
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block font-bold text-stone-700 uppercase tracking-wider text-xs">
+                        Label Status Stok (Tampilan Katalog)
+                      </label>
+                      <span className="text-[10px] text-stone-400">Bisa ketik bebas atau pilih template</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={productFormData.stock_label}
+                          onChange={(e) =>
+                            setProductFormData((prev) => ({ ...prev, stock_label: e.target.value }))
+                          }
+                          placeholder="Ketik manual (misal: Tersedia, Sisa 2 pcs, Pre-Order)"
+                          className="flex-1 px-3 py-2 rounded-xl border border-stone-300 text-sm focus:outline-none focus:border-forest bg-white font-medium"
+                        />
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              const val = e.target.value;
+                              setProductFormData((prev) => ({
+                                ...prev,
+                                stock_label: val,
+                                stock: val === "Habis" ? "0" : prev.stock === "0" ? "10" : prev.stock,
+                              }));
+                            }
+                          }}
+                          className="px-2.5 py-2 rounded-xl border border-stone-300 text-xs text-stone-700 bg-stone-50 hover:bg-stone-100 cursor-pointer focus:outline-none focus:border-forest"
+                          title="Pilih Template Status"
                         >
-                          {item.label}
-                        </button>
-                      ))}
+                          <option value="">📋 Template...</option>
+                          <option value="Tersedia">Tersedia</option>
+                          <option value="Tersisa 3">Tersisa 3</option>
+                          <option value="Tersisa 5">Tersisa 5</option>
+                          <option value="Pre-Order 2 Hari">Pre-Order 2 Hari</option>
+                          <option value="Pre-Order 5 Hari">Pre-Order 5 Hari</option>
+                          <option value="Habis">Habis</option>
+                          <option value="Edisi Terbatas">Edisi Terbatas</option>
+                        </select>
+                      </div>
+
+                      {/* Quick Pill Templates */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="text-[10px] text-stone-400 font-semibold uppercase">Pilihan Cepat:</span>
+                        {[
+                          { label: "Tersedia", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                          { label: "Tersisa 3", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+                          { label: "Pre-Order 2 Hari", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                          { label: "Habis", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+                          { label: "Edisi Terbatas", cls: "bg-purple-50 text-purple-700 border-purple-200" },
+                        ].map((item) => (
+                          <button
+                            key={item.label}
+                            type="button"
+                            onClick={() =>
+                              setProductFormData((prev) => ({
+                                ...prev,
+                                stock_label: item.label,
+                                stock: item.label === "Habis" ? "0" : prev.stock === "0" ? "10" : prev.stock,
+                              }))
+                            }
+                            className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${
+                              productFormData.stock_label === item.label
+                                ? "ring-2 ring-forest font-bold " + item.cls
+                                : "hover:opacity-80 " + item.cls
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
